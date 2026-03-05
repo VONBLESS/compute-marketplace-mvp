@@ -105,6 +105,16 @@ input, select {
   font-family: "IBM Plex Mono", monospace;
 }
 
+textarea {
+  width: 100%;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fffcf5;
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+}
+
 input:focus, select:focus {
   outline: none;
   border-color: var(--accent);
@@ -169,6 +179,11 @@ input:focus, select:focus {
 
 .hidden {
   display: none !important;
+}
+
+.verified {
+  color: #0f6b54;
+  font-weight: 700;
 }
 
 .item {

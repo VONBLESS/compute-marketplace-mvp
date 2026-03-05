@@ -1,5 +1,6 @@
 const state = {
   hostApiKey: localStorage.getItem("marketplace_host_api_key") || "",
+  hostId: localStorage.getItem("marketplace_host_id") || "",
 };
 
 const el = {
@@ -17,6 +18,8 @@ const el = {
   registerHostBtn: document.getElementById("registerHostBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   hostApiKey: document.getElementById("hostApiKeyInput"),
+  agentCommandOutput: document.getElementById("agentCommandOutput"),
+  verificationHint: document.getElementById("verificationHint"),
   hostsList: document.getElementById("hostsList"),
   hostsEmpty: document.getElementById("hostsEmpty"),
   logOutput: document.getElementById("logOutput"),
@@ -25,6 +28,7 @@ const el = {
 
 function persist() {
   localStorage.setItem("marketplace_host_api_key", state.hostApiKey);
+  localStorage.setItem("marketplace_host_id", state.hostId);
 }
 
 function log(message) {
@@ -111,15 +115,41 @@ function autoDetectHardware() {
   notify("Hardware auto-detected.", "success");
 }
 
+function updateAgentCommand() {
+  const base = window.location.origin;
+  const key = state.hostApiKey || "<host_api_key>";
+  el.agentCommandOutput.value =
+    `$env:API_BASE_URL='${base}'\n` +
+    `$env:HOST_API_KEY='${key}'\n` +
+    `.\\marketplace-host-agent.exe`;
+}
+
+function updateVerificationHint(hosts) {
+  const host = hosts.find((item) => item.id === state.hostId) || null;
+  if (!host) {
+    el.verificationHint.textContent = "Register host, download installer, run agent, then wait for verification.";
+    el.verificationHint.classList.remove("verified");
+    return;
+  }
+  if (host.verified) {
+    el.verificationHint.textContent = `Verified at ${host.verified_at || host.last_seen_at}. This host can now share compute.`;
+    el.verificationHint.classList.add("verified");
+  } else {
+    el.verificationHint.textContent = "Verification pending. Run agent installer using this host API key and wait for heartbeat.";
+    el.verificationHint.classList.remove("verified");
+  }
+}
+
 function renderHosts(hosts) {
   el.hostsList.innerHTML = "";
   el.hostsEmpty.style.display = hosts.length ? "none" : "block";
   hosts.forEach((host) => {
     const item = document.createElement("div");
     item.className = "item";
-    item.textContent = `name=${host.host_name}\nid=${host.id}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\napi_key=${host.api_key}\nlast_seen_at=${host.last_seen_at}`;
+    item.textContent = `name=${host.host_name}\nid=${host.id}\nverified=${host.verified}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\napi_key=${host.api_key}\nlast_seen_at=${host.last_seen_at}`;
     el.hostsList.appendChild(item);
   });
+  updateVerificationHint(hosts);
 }
 
 async function refreshHosts() {
@@ -133,6 +163,7 @@ async function refreshHosts() {
   try {
     const hosts = await api("/hosts");
     renderHosts(hosts);
+    updateAgentCommand();
   } catch (err) {
     el.hostsList.innerHTML = "";
     el.hostsEmpty.style.display = "block";
@@ -202,8 +233,10 @@ el.registerHostBtn.addEventListener("click", async () => {
       }),
     });
     state.hostApiKey = host.api_key;
+    state.hostId = host.id;
     persist();
     el.hostApiKey.value = state.hostApiKey;
+    updateAgentCommand();
     log(`Host registered. API key captured for agent: ${host.api_key}`);
     notify("Host registered successfully.", "success");
     await refreshHosts();
@@ -216,6 +249,7 @@ el.registerHostBtn.addEventListener("click", async () => {
 el.refreshBtn.addEventListener("click", refreshHosts);
 
 el.hostApiKey.value = state.hostApiKey;
+updateAgentCommand();
 autoDetectHardware();
 refreshHosts();
 setInterval(refreshHosts, 5000);

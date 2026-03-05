@@ -79,6 +79,14 @@
         Host API Key (for agent env var)
         <input id="hostApiKeyInput" type="text" readonly>
       </label>
+      <label>
+        Agent Start Command (PowerShell)
+        <textarea id="agentCommandOutput" rows="4" readonly></textarea>
+      </label>
+      <div class="row">
+        <a id="downloadAgentBtn" class="btn" href="/downloads/marketplace-host-agent.exe">Download Host Agent (.exe)</a>
+      </div>
+      <p id="verificationHint" class="muted">Verification pending. Your host becomes shareable only after the agent sends heartbeat.</p>
     </section>
 
     <section class="card">

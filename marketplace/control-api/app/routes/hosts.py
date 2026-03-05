@@ -36,7 +36,7 @@ def list_hosts(email: str = Depends(get_current_email)) -> list[HostRecord]:
 @router.get('/available', response_model=list[HostPublicRecord])
 def list_available_hosts(_: str = Depends(get_current_email)) -> list[HostPublicRecord]:
     store.cleanup_expired_reservations()
-    return [HostPublicRecord.from_host(host) for host in store.hosts.values()]
+    return [HostPublicRecord.from_host(host) for host in store.hosts.values() if host.verified]
 
 
 @router.post('/heartbeat')
@@ -48,6 +48,9 @@ def heartbeat(payload: HostHeartbeatRequest, host_id: str = Depends(get_host_fro
     host.status = payload.status
     host.current_job_id = payload.current_job_id
     host.last_seen_at = datetime.now(timezone.utc)
+    if not host.verified:
+        host.verified = True
+        host.verified_at = datetime.now(timezone.utc)
     return {'message': 'heartbeat accepted'}
 
 
@@ -57,6 +60,8 @@ def get_assignable_job(host_id: str = Depends(get_host_from_api_key)) -> JobReco
     host = store.hosts.get(host_id)
     if host is None:
         raise HTTPException(status_code=404, detail='Host not found')
+    if not host.verified:
+        return None
 
     for job_id in list(store.queue):
         job = store.jobs[job_id]

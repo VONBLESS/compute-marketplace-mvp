@@ -61,6 +61,8 @@ class HostRecord(BaseModel):
     status: str = 'idle'
     current_job_id: str | None = None
     last_seen_at: datetime = Field(default_factory=utc_now)
+    verified: bool = False
+    verified_at: datetime | None = None
 
 
 class HostPublicRecord(BaseModel):
@@ -74,6 +76,7 @@ class HostPublicRecord(BaseModel):
     vram_mb: int | None = None
     status: str
     last_seen_at: datetime
+    verified: bool
 
     @classmethod
     def from_host(cls, host: HostRecord) -> 'HostPublicRecord':
@@ -88,6 +91,7 @@ class HostPublicRecord(BaseModel):
             vram_mb=host.vram_mb,
             status=host.status,
             last_seen_at=host.last_seen_at,
+            verified=host.verified,
         )
 
 

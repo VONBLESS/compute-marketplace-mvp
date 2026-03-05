@@ -19,6 +19,8 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
         preferred_host = store.hosts.get(payload.preferred_host_id)
         if not preferred_host:
             raise HTTPException(status_code=400, detail='Preferred host not found')
+        if not preferred_host.verified:
+            raise HTTPException(status_code=400, detail='Preferred host is not verified yet')
         if payload.requested_cpu_cores > preferred_host.cpu_cores:
             raise HTTPException(status_code=400, detail='Requested CPU exceeds preferred host capacity')
         if payload.requested_ram_mb > preferred_host.ram_mb:
@@ -45,7 +47,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             if preferred:
                 candidate_hosts = [preferred]
         else:
-            candidate_hosts = list(store.hosts.values())
+            candidate_hosts = [host for host in store.hosts.values() if host.verified]
 
         allocated = False
         for host in candidate_hosts:

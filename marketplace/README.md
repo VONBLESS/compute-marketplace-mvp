@@ -32,11 +32,10 @@ This scaffold gives you:
    - Save returned `api_key`
 
 4. Start host agent (Windows PowerShell):
-   - `cd marketplace/host-agent`
-   - `pip install -r requirements.txt`
-   - `$env:API_BASE_URL='http://localhost:8000'`
-   - `$env:HOST_API_KEY='<api_key_from_register_host>'`
-   - `python -m agent.service`
+   - Download installer from `http://localhost:8000/downloads/marketplace-host-agent.exe`
+   - On host page, register host and copy generated PowerShell start command
+   - Run command to start `.exe` with `API_BASE_URL` and `HOST_API_KEY`
+   - Host becomes shareable only after first heartbeat verification
 
 5. Submit a job as a client:
    - Register/login client user
@@ -48,5 +47,6 @@ This scaffold gives you:
 - Current store is in-memory only; restart clears data.
 - Runner currently executes host commands directly as a placeholder.
 - Host capacity is now tracked as free/total CPU and RAM for per-job slicing.
+- Only verified hosts (agent heartbeat received) are exposed to clients for sharing.
 - You can tune host parallelism with `MAX_PARALLEL_JOBS` for `host-agent`.
 - Next step is replacing `agent/runner.py` with Docker-isolated execution and adding PostgreSQL persistence.

@@ -27,6 +27,11 @@ htmlcov/
 # Environment/config secrets
 .env
 .env.*
+*.pem
+*.ppk
+*.key
+id_rsa
+id_rsa.pub
 
 # IDE/editor
 .idea/
