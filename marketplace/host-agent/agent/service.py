@@ -72,8 +72,8 @@ def main() -> None:
                 )
                 running_jobs[job_id] = executor.submit(
                     run_job,
-                    job['command'],
-                    job['timeout_seconds'],
+                    job,
+                    settings,
                     lambda line, job_id=job_id: client.report_log_chunk(job_id, line),
                 )
 

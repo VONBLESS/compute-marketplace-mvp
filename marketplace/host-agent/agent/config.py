@@ -13,6 +13,8 @@ class Settings:
     heartbeat_interval_seconds: int = 10
     poll_interval_seconds: int = 5
     max_parallel_jobs: int = 4
+    execution_mode: str = 'docker'
+    docker_image: str = 'python:3.12-slim'
 
 
 def _app_data_dir() -> Path:
@@ -43,6 +45,8 @@ def load_settings() -> Settings:
         heartbeat_interval_seconds=int(os.getenv('HEARTBEAT_INTERVAL_SECONDS', file_cfg.get('heartbeat_interval_seconds', 10))),
         poll_interval_seconds=int(os.getenv('POLL_INTERVAL_SECONDS', file_cfg.get('poll_interval_seconds', 5))),
         max_parallel_jobs=int(os.getenv('MAX_PARALLEL_JOBS', file_cfg.get('max_parallel_jobs', 4))),
+        execution_mode=os.getenv('EXECUTION_MODE', file_cfg.get('execution_mode', 'docker')),
+        docker_image=os.getenv('DOCKER_IMAGE', file_cfg.get('docker_image', 'python:3.12-slim')),
     )
 
 
@@ -60,6 +64,8 @@ def save_settings(settings: Settings) -> Path:
         'heartbeat_interval_seconds': settings.heartbeat_interval_seconds,
         'poll_interval_seconds': settings.poll_interval_seconds,
         'max_parallel_jobs': settings.max_parallel_jobs,
+        'execution_mode': settings.execution_mode,
+        'docker_image': settings.docker_image,
     }
     CONFIG_FILE.write_text(json.dumps(payload, indent=2), encoding='utf-8')
     return CONFIG_FILE
