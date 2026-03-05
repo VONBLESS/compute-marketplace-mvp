@@ -27,6 +27,7 @@ const el = {
   resourcesEmpty: document.getElementById("resourcesEmpty"),
   jobsList: document.getElementById("jobsList"),
   jobsEmpty: document.getElementById("jobsEmpty"),
+  terminalOutput: document.getElementById("terminalOutput"),
   logOutput: document.getElementById("logOutput"),
   statusPill: document.getElementById("statusPill"),
 };
@@ -155,6 +156,23 @@ function renderJobs(jobs) {
     });
 }
 
+function renderTerminalOutput(jobs) {
+  const outputs = jobs
+    .filter((job) => job.mode === "quick_run" && (job.status === "completed" || job.status === "failed") && job.output)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .slice(0, 10)
+    .map((job) => {
+      return [
+        `[${job.updated_at}] job=${job.id} status=${job.status} exit_code=${job.exit_code ?? "n/a"}`,
+        `command=${JSON.stringify(job.command)}`,
+        `${job.output}`.trim(),
+        "----------------------------------------",
+      ].join("\n");
+    });
+
+  el.terminalOutput.textContent = outputs.length ? outputs.join("\n") : "No terminal output yet.";
+}
+
 async function refreshAll() {
   try {
     await api("/health");
@@ -169,9 +187,11 @@ async function refreshAll() {
     renderPreferredHostOptions(hosts);
     renderResources(hosts);
     renderJobs(jobs);
+    renderTerminalOutput(jobs);
   } catch (err) {
     el.resourcesList.innerHTML = "";
     el.jobsList.innerHTML = "";
+    el.terminalOutput.textContent = "No terminal output yet.";
     el.resourcesEmpty.style.display = "block";
     el.jobsEmpty.style.display = "block";
     if (isAuthError(err)) {

@@ -120,6 +120,8 @@ class JobRecord(BaseModel):
     preferred_host_id: str | None = None
     reserve_seconds: int = 120
     reserve_until: datetime | None = None
+    exit_code: int | None = None
+    output: str = ''
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

@@ -119,6 +119,8 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
         raise HTTPException(status_code=403, detail='Host is not assigned to this job')
 
     job.status = payload.status
+    job.exit_code = payload.exit_code
+    job.output = payload.output
     store.touch_job(job)
 
     host = store.hosts.get(host_id)
