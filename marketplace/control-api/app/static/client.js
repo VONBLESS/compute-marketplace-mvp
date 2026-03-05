@@ -2,6 +2,10 @@ const state = {
   authenticated: false,
   selectedHostId: "",
   uploadedUrl: "",
+  terminalConnected: false,
+  terminalBusy: false,
+  activeJobId: null,
+  activeOutputLength: 0,
 };
 
 const el = {
@@ -11,12 +15,6 @@ const el = {
   registerBtn: document.getElementById("registerBtn"),
   loginBtn: document.getElementById("loginBtn"),
   topLogoutBtn: document.getElementById("topLogoutBtn"),
-  mode: document.getElementById("modeSelect"),
-  reserveDurationWrap: document.getElementById("reserveDurationWrap"),
-  reserveSeconds: document.getElementById("reserveSecondsInput"),
-  commandWrap: document.getElementById("commandWrap"),
-  timeoutWrap: document.getElementById("timeoutWrap"),
-  command: document.getElementById("commandInput"),
   timeout: document.getElementById("timeoutInput"),
   requestedCpu: document.getElementById("requestedCpuInput"),
   requestedRam: document.getElementById("requestedRamInput"),
@@ -26,7 +24,10 @@ const el = {
   uploadFileBtn: document.getElementById("uploadFileBtn"),
   uploadedUrlOutput: document.getElementById("uploadedUrlOutput"),
   insertUrlBtn: document.getElementById("insertUrlBtn"),
-  submitJobBtn: document.getElementById("submitJobBtn"),
+  connectTerminalBtn: document.getElementById("connectTerminalBtn"),
+  disconnectTerminalBtn: document.getElementById("disconnectTerminalBtn"),
+  terminalCommandInput: document.getElementById("terminalCommandInput"),
+  sendCommandBtn: document.getElementById("sendCommandBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   resourcesList: document.getElementById("resourcesList"),
   resourcesEmpty: document.getElementById("resourcesEmpty"),
@@ -42,6 +43,16 @@ const el = {
 function log(message) {
   const stamp = new Date().toLocaleTimeString();
   el.logOutput.textContent = `[${stamp}] ${message}\n${el.logOutput.textContent}`.slice(0, 5000);
+}
+
+function appendTerminal(text) {
+  const chunk = `${text}\n`;
+  if (!el.terminalOutput.textContent || el.terminalOutput.textContent === "No terminal output yet.") {
+    el.terminalOutput.textContent = chunk;
+  } else {
+    el.terminalOutput.textContent += chunk;
+  }
+  el.terminalOutput.scrollTop = el.terminalOutput.scrollHeight;
 }
 
 function getToastRoot() {
@@ -114,11 +125,10 @@ function setAuthState(authenticated) {
   el.topLogoutBtn.classList.toggle("hidden", !authenticated);
 }
 
-function syncModeUI() {
-  const reserveMode = el.mode.value === "reserve";
-  el.reserveDurationWrap.classList.toggle("hidden", !reserveMode);
-  el.commandWrap.classList.toggle("hidden", reserveMode);
-  el.timeoutWrap.classList.toggle("hidden", reserveMode);
+function refreshTerminalButtons() {
+  el.connectTerminalBtn.disabled = state.terminalConnected;
+  el.disconnectTerminalBtn.disabled = !state.terminalConnected;
+  el.sendCommandBtn.disabled = !state.terminalConnected || state.terminalBusy;
 }
 
 function renderPreferredHostOptions(hosts) {
@@ -179,31 +189,39 @@ function renderJobs(jobs) {
     });
 }
 
-function renderTerminalOutput(jobs) {
-  const outputs = jobs
-    .filter((job) => job.mode === "quick_run" && job.output)
-    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-    .slice(0, 10)
-    .map((job) => {
-      return [
-        `[${job.updated_at}] job=${job.id} status=${job.status} exit_code=${job.exit_code ?? "n/a"}`,
-        `command=${JSON.stringify(job.command)}`,
-        `${job.output}`.trim(),
-        "----------------------------------------",
-      ].join("\n");
-    });
-
-  el.terminalOutput.textContent = outputs.length ? outputs.join("\n") : "No terminal output yet.";
-}
-
 function insertUploadedUrlIntoCommand() {
   if (!state.uploadedUrl) {
     notify("No uploaded file URL yet.", "error");
     return;
   }
-  const existing = el.command.value.trim();
-  el.command.value = existing ? `${existing} ${state.uploadedUrl}` : state.uploadedUrl;
+  const existing = el.terminalCommandInput.value.trim();
+  el.terminalCommandInput.value = existing ? `${existing} ${state.uploadedUrl}` : state.uploadedUrl;
   notify("Uploaded URL inserted into command.", "success");
+}
+
+function updateActiveJobOutput(jobs) {
+  if (!state.activeJobId) {
+    return;
+  }
+  const active = jobs.find((job) => job.id === state.activeJobId);
+  if (!active) {
+    return;
+  }
+
+  const output = active.output || "";
+  if (output.length > state.activeOutputLength) {
+    const delta = output.slice(state.activeOutputLength);
+    appendTerminal(delta);
+    state.activeOutputLength = output.length;
+  }
+
+  if (["completed", "failed", "cancelled", "expired"].includes(active.status)) {
+    appendTerminal(`[exit=${active.exit_code ?? "n/a"}] status=${active.status}`);
+    state.terminalBusy = false;
+    state.activeJobId = null;
+    state.activeOutputLength = 0;
+    refreshTerminalButtons();
+  }
 }
 
 async function refreshAll() {
@@ -220,11 +238,10 @@ async function refreshAll() {
     renderPreferredHostOptions(hosts);
     renderResources(hosts);
     renderJobs(jobs);
-    renderTerminalOutput(jobs);
+    updateActiveJobOutput(jobs);
   } catch (err) {
     el.resourcesList.innerHTML = "";
     el.jobsList.innerHTML = "";
-    el.terminalOutput.textContent = "No terminal output yet.";
     el.resourcesEmpty.style.display = "block";
     el.jobsEmpty.style.display = "block";
     if (isAuthError(err)) {
@@ -278,6 +295,11 @@ el.topLogoutBtn.addEventListener("click", async () => {
   }
   setAuthState(false);
   state.selectedHostId = "";
+  state.terminalConnected = false;
+  state.terminalBusy = false;
+  state.activeJobId = null;
+  state.activeOutputLength = 0;
+  refreshTerminalButtons();
   await refreshAll();
 });
 
@@ -285,42 +307,79 @@ el.preferredHost.addEventListener("change", () => {
   state.selectedHostId = el.preferredHost.value;
 });
 
-el.submitJobBtn.addEventListener("click", async () => {
-  const mode = el.mode.value;
-  let commandText = "python --version";
-  if (mode === "quick_run") {
-    commandText = el.command.value.trim();
-    if (!commandText) {
-      log("Invalid command: command cannot be empty.");
-      notify("Invalid command: command cannot be empty.", "error");
-      return;
-    }
+el.connectTerminalBtn.addEventListener("click", () => {
+  state.terminalConnected = true;
+  refreshTerminalButtons();
+  appendTerminal("[terminal connected]");
+  notify("Terminal connected.", "success");
+  el.terminalCommandInput.focus();
+});
+
+el.disconnectTerminalBtn.addEventListener("click", () => {
+  state.terminalConnected = false;
+  state.terminalBusy = false;
+  state.activeJobId = null;
+  state.activeOutputLength = 0;
+  refreshTerminalButtons();
+  appendTerminal("[terminal disconnected]");
+  notify("Terminal disconnected.", "info");
+});
+
+async function runTerminalCommand() {
+  if (!state.terminalConnected) {
+    notify("Connect terminal first.", "error");
+    return;
   }
+  if (state.terminalBusy) {
+    notify("Wait for current command to finish.", "info");
+    return;
+  }
+
+  const commandText = el.terminalCommandInput.value.trim();
+  if (!commandText) {
+    notify("Command cannot be empty.", "error");
+    return;
+  }
+
+  appendTerminal(`> ${commandText}`);
+
   try {
     const job = await api("/jobs", {
       method: "POST",
       body: JSON.stringify({
-        mode,
-        command_text: mode === "quick_run" ? commandText : null,
+        mode: "quick_run",
+        command_text: commandText,
         requires_gpu: el.requiresGpu.checked,
         requested_cpu_cores: Number(el.requestedCpu.value),
         requested_ram_mb: Number(el.requestedRam.value),
-        timeout_seconds: mode === "quick_run" ? Number(el.timeout.value) : 120,
-        reserve_seconds: mode === "reserve" ? Number(el.reserveSeconds.value) : 120,
+        timeout_seconds: Number(el.timeout.value),
+        reserve_seconds: 120,
         preferred_host_id: state.selectedHostId || null,
       }),
     });
-    log(`Job submitted: ${job.id}`);
-    notify("Job submitted.", "success");
+
+    state.terminalBusy = true;
+    state.activeJobId = job.id;
+    state.activeOutputLength = 0;
+    refreshTerminalButtons();
+    log(`Terminal command submitted: ${job.id}`);
+    el.terminalCommandInput.value = "";
     await refreshAll();
   } catch (err) {
     log(`Submit failed: ${err.message}`);
     notify(`Submit failed: ${err.message}`, "error");
   }
+}
+
+el.sendCommandBtn.addEventListener("click", runTerminalCommand);
+el.terminalCommandInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runTerminalCommand();
+  }
 });
 
 el.refreshBtn.addEventListener("click", refreshAll);
-el.mode.addEventListener("change", syncModeUI);
 el.clearTerminalBtn.addEventListener("click", () => {
   el.terminalOutput.textContent = "No terminal output yet.";
 });
@@ -345,6 +404,6 @@ el.uploadFileBtn.addEventListener("click", async () => {
 });
 
 setAuthState(false);
-syncModeUI();
+refreshTerminalButtons();
 refreshAll();
-setInterval(refreshAll, 1200);
+setInterval(refreshAll, 800);

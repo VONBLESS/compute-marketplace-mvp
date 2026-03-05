@@ -42,27 +42,10 @@
     </section>
 
     <section class="card">
-      <h2>Submit Job</h2>
+      <h2>Live Terminal</h2>
       <div class="grid two">
         <label>
-          Mode
-          <select id="modeSelect">
-            <option value="quick_run">Quick Run</option>
-            <option value="reserve">Reserve Only</option>
-          </select>
-        </label>
-        <label id="reserveDurationWrap" class="hidden">
-          Reserve Seconds
-          <input id="reserveSecondsInput" type="number" value="120" min="30" max="86400">
-        </label>
-      </div>
-      <div class="grid two">
-        <label id="commandWrap">
-          Command Prompt Command
-          <textarea id="commandInput" rows="6">python --version</textarea>
-        </label>
-        <label id="timeoutWrap">
-          Timeout Seconds
+          Timeout Seconds (per command)
           <input id="timeoutInput" type="number" value="120" min="10" max="7200">
         </label>
       </div>
@@ -98,7 +81,15 @@
         <button id="insertUrlBtn" class="btn ghost" type="button">Insert URL Into Command</button>
       </div>
       <div class="row">
-        <button id="submitJobBtn" class="btn">Submit Job</button>
+        <button id="connectTerminalBtn" class="btn">Connect Terminal</button>
+        <button id="disconnectTerminalBtn" class="btn secondary" type="button" disabled>Disconnect</button>
+      </div>
+      <label>
+        Command
+        <input id="terminalCommandInput" type="text" placeholder="python --version">
+      </label>
+      <div class="row">
+        <button id="sendCommandBtn" class="btn" type="button" disabled>Run Command</button>
         <button id="refreshBtn" class="btn ghost">Refresh</button>
       </div>
     </section>
@@ -118,7 +109,7 @@
 
     <section class="card">
       <h2>Terminal Output</h2>
-      <p class="muted">Outputs from completed/failed quick-run jobs.</p>
+      <p class="muted">Interactive output stream. Connect, run commands, disconnect when done.</p>
       <div class="row">
         <button id="clearTerminalBtn" class="btn ghost" type="button">Clear Terminal</button>
       </div>
