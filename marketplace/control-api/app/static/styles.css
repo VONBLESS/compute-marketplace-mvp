@@ -118,7 +118,10 @@ textarea {
 .command-input {
   resize: vertical;
   max-height: 260px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 input:focus, select:focus {
@@ -185,7 +188,8 @@ input:focus, select:focus {
 
 .jobs-scroll {
   max-height: 420px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -210,8 +214,14 @@ input:focus, select:focus {
 
 .item pre {
   margin: 8px 0 0;
-  white-space: pre-wrap;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
   font-family: "IBM Plex Mono", monospace;
+}
+
+.jobs-scroll .item {
+  overflow-wrap: normal;
 }
 
 .item.selectable {
@@ -230,7 +240,9 @@ input:focus, select:focus {
   margin: 0;
   min-height: 140px;
   max-height: 240px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  white-space: pre;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: #171613;
