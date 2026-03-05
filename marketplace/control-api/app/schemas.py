@@ -114,6 +114,8 @@ class JobRecord(BaseModel):
     owner_email: str
     command: list[str]
     mode: Literal['quick_run', 'reserve'] = 'quick_run'
+    compose_job_id: str | None = None
+    compose_role: Literal['cpu', 'gpu'] | None = None
     session_id: str | None = None
     retain_progress: bool = False
     session_action: Literal['none', 'stop'] = 'none'
@@ -188,6 +190,7 @@ class ComposeJobDetailResponse(BaseModel):
     compose_job: ComposeJobRecord
     cpu_job: JobRecord | None = None
     gpu_job: JobRecord | None = None
+    merged_output: str = ''
 
 
 class FileUploadResponse(BaseModel):

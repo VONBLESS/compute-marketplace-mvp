@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import timezone, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.core.security import get_current_email
 from app.core.store import store
@@ -53,6 +56,31 @@ def _compute_compose_status(compose: ComposeJobRecord) -> ComposeJobRecord:
     return compose
 
 
+def _merge_output(compose: ComposeJobRecord) -> str:
+    cpu_job = store.jobs.get(compose.cpu_job_id)
+    gpu_job = store.jobs.get(compose.gpu_job_id)
+    lines: list[str] = []
+    if cpu_job and cpu_job.output:
+        lines.append('[cpu]')
+        lines.append(cpu_job.output.strip())
+    if gpu_job and gpu_job.output:
+        if lines:
+            lines.append('----------------------------------------')
+        lines.append('[gpu]')
+        lines.append(gpu_job.output.strip())
+    return '\n'.join(lines).strip()
+
+
+def _compose_detail(compose: ComposeJobRecord) -> ComposeJobDetailResponse:
+    _compute_compose_status(compose)
+    return ComposeJobDetailResponse(
+        compose_job=compose,
+        cpu_job=store.jobs.get(compose.cpu_job_id),
+        gpu_job=store.jobs.get(compose.gpu_job_id),
+        merged_output=_merge_output(compose),
+    )
+
+
 @router.post('', response_model=ComposeJobDetailResponse)
 def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(get_current_email)) -> ComposeJobDetailResponse:
     if not payload.gpu_required:
@@ -65,6 +93,7 @@ def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(ge
         owner_email=email,
         command=command,
         mode='quick_run',
+        compose_role='cpu',
         requires_gpu=False,
         requested_cpu_cores=payload.requested_cpu_cores,
         requested_ram_mb=payload.requested_ram_mb,
@@ -75,6 +104,7 @@ def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(ge
         owner_email=email,
         command=command,
         mode='quick_run',
+        compose_role='gpu',
         requires_gpu=True,
         requested_cpu_cores=1,
         requested_ram_mb=512,
@@ -98,9 +128,11 @@ def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(ge
         requested_ram_mb=payload.requested_ram_mb,
         timeout_seconds=payload.timeout_seconds,
     )
+    cpu_job.compose_job_id = compose.id
+    gpu_job.compose_job_id = compose.id
     store.compose_jobs[compose.id] = compose
     store.persist_state()
-    return ComposeJobDetailResponse(compose_job=compose, cpu_job=cpu_job, gpu_job=gpu_job)
+    return _compose_detail(compose)
 
 
 @router.get('', response_model=list[ComposeJobRecord])
@@ -118,12 +150,43 @@ def get_compose_job(compose_id: str, email: str = Depends(get_current_email)) ->
         raise HTTPException(status_code=404, detail='Compose job not found')
     if compose.owner_email != email:
         raise HTTPException(status_code=403, detail='Forbidden')
-    _compute_compose_status(compose)
-    return ComposeJobDetailResponse(
-        compose_job=compose,
-        cpu_job=store.jobs.get(compose.cpu_job_id),
-        gpu_job=store.jobs.get(compose.gpu_job_id),
-    )
+    return _compose_detail(compose)
+
+
+@router.get('/{compose_id}/status', response_model=ComposeJobDetailResponse)
+def get_compose_job_status(compose_id: str, email: str = Depends(get_current_email)) -> ComposeJobDetailResponse:
+    compose = store.compose_jobs.get(compose_id)
+    if not compose:
+        raise HTTPException(status_code=404, detail='Compose job not found')
+    if compose.owner_email != email:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    return _compose_detail(compose)
+
+
+@router.get('/{compose_id}/stream')
+async def stream_compose_job(compose_id: str, email: str = Depends(get_current_email)) -> StreamingResponse:
+    compose = store.compose_jobs.get(compose_id)
+    if not compose:
+        raise HTTPException(status_code=404, detail='Compose job not found')
+    if compose.owner_email != email:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    async def event_gen():
+        last_payload = ''
+        for _ in range(120):
+            current = store.compose_jobs.get(compose_id)
+            if not current:
+                break
+            detail = _compose_detail(current).model_dump(mode='json')
+            payload = json.dumps(detail)
+            if payload != last_payload:
+                yield f'data: {payload}\n\n'
+                last_payload = payload
+            if detail['compose_job']['status'] in {'completed', 'failed', 'cancelled'}:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_gen(), media_type='text/event-stream')
 
 
 @router.post('/{compose_id}/cancel', response_model=MessageResponse)

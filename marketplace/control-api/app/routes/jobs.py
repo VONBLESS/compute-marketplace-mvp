@@ -318,6 +318,8 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
     if payload.output:
         job.output += payload.output if not job.output else '\n' + payload.output
     store.touch_job(job)
+    if job.compose_job_id and job.compose_job_id in store.compose_jobs:
+        store.compose_jobs[job.compose_job_id].updated_at = job.updated_at
 
     host = store.hosts.get(host_id)
     if host:
@@ -348,4 +350,6 @@ def report_log_chunk(job_id: str, payload: JobLogChunkRequest, host_id: str = De
     if len(job.output) > 100_000:
         job.output = job.output[-100_000:]
     store.touch_job(job)
+    if job.compose_job_id and job.compose_job_id in store.compose_jobs:
+        store.compose_jobs[job.compose_job_id].updated_at = job.updated_at
     return MessageResponse(message='Log chunk accepted')
