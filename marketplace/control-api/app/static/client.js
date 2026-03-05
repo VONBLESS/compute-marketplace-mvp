@@ -1,6 +1,7 @@
 const state = {
   authenticated: false,
   selectedHostId: "",
+  selectedJobIds: new Set(),
   uploadedUrl: "",
   terminalConnected: false,
   terminalBusy: false,
@@ -33,6 +34,10 @@ const el = {
   resourcesEmpty: document.getElementById("resourcesEmpty"),
   jobsList: document.getElementById("jobsList"),
   jobsEmpty: document.getElementById("jobsEmpty"),
+  selectAllJobsBtn: document.getElementById("selectAllJobsBtn"),
+  clearJobSelectionBtn: document.getElementById("clearJobSelectionBtn"),
+  cancelSelectedJobsBtn: document.getElementById("cancelSelectedJobsBtn"),
+  deleteSelectedJobsBtn: document.getElementById("deleteSelectedJobsBtn"),
   terminalOutput: document.getElementById("terminalOutput"),
   logOutput: document.getElementById("logOutput"),
   clearTerminalBtn: document.getElementById("clearTerminalBtn"),
@@ -178,13 +183,55 @@ function renderResources(hosts) {
 
 function renderJobs(jobs) {
   el.jobsList.innerHTML = "";
+  const availableIds = new Set(jobs.map((job) => job.id));
+  state.selectedJobIds = new Set([...state.selectedJobIds].filter((id) => availableIds.has(id)));
   el.jobsEmpty.style.display = jobs.length ? "none" : "block";
   jobs
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .forEach((job) => {
       const item = document.createElement("div");
       item.className = "item";
-      item.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
+      const canCancel = !["completed", "failed", "cancelled", "expired"].includes(job.status);
+      const isSelected = state.selectedJobIds.has(job.id);
+
+      const topRow = document.createElement("div");
+      topRow.className = "row";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = isSelected;
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          state.selectedJobIds.add(job.id);
+        } else {
+          state.selectedJobIds.delete(job.id);
+        }
+      });
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn ghost";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.disabled = !canCancel;
+      cancelBtn.addEventListener("click", async () => {
+        await cancelJob(job.id);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn ghost";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", async () => {
+        await deleteJob(job.id);
+      });
+
+      topRow.appendChild(checkbox);
+      topRow.appendChild(cancelBtn);
+      topRow.appendChild(deleteBtn);
+      item.appendChild(topRow);
+
+      const details = document.createElement("pre");
+      details.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
+      item.appendChild(details);
       el.jobsList.appendChild(item);
     });
 }
@@ -205,6 +252,10 @@ function updateActiveJobOutput(jobs) {
   }
   const active = jobs.find((job) => job.id === state.activeJobId);
   if (!active) {
+    state.terminalBusy = false;
+    state.activeJobId = null;
+    state.activeOutputLength = 0;
+    refreshTerminalButtons();
     return;
   }
 
@@ -371,6 +422,31 @@ async function runTerminalCommand() {
   }
 }
 
+async function cancelJob(jobId) {
+  try {
+    await api(`/jobs/${jobId}/cancel`, { method: "POST" });
+    log(`Job cancelled: ${jobId}`);
+    notify("Job cancelled.", "success");
+    await refreshAll();
+  } catch (err) {
+    log(`Cancel failed: ${err.message}`);
+    notify(`Cancel failed: ${err.message}`, "error");
+  }
+}
+
+async function deleteJob(jobId) {
+  try {
+    await api(`/jobs/${jobId}`, { method: "DELETE" });
+    state.selectedJobIds.delete(jobId);
+    log(`Job deleted: ${jobId}`);
+    notify("Job deleted.", "success");
+    await refreshAll();
+  } catch (err) {
+    log(`Delete failed: ${err.message}`);
+    notify(`Delete failed: ${err.message}`, "error");
+  }
+}
+
 el.sendCommandBtn.addEventListener("click", runTerminalCommand);
 el.terminalCommandInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -380,6 +456,40 @@ el.terminalCommandInput.addEventListener("keydown", (event) => {
 });
 
 el.refreshBtn.addEventListener("click", refreshAll);
+el.selectAllJobsBtn.addEventListener("click", async () => {
+  try {
+    const jobs = await api("/jobs");
+    jobs.forEach((job) => state.selectedJobIds.add(job.id));
+    renderJobs(jobs);
+  } catch (err) {
+    notify(`Select all failed: ${err.message}`, "error");
+  }
+});
+el.clearJobSelectionBtn.addEventListener("click", () => {
+  state.selectedJobIds.clear();
+  refreshAll();
+});
+el.cancelSelectedJobsBtn.addEventListener("click", async () => {
+  const ids = [...state.selectedJobIds];
+  if (!ids.length) {
+    notify("No jobs selected.", "info");
+    return;
+  }
+  for (const id of ids) {
+    await cancelJob(id);
+  }
+});
+el.deleteSelectedJobsBtn.addEventListener("click", async () => {
+  const ids = [...state.selectedJobIds];
+  if (!ids.length) {
+    notify("No jobs selected.", "info");
+    return;
+  }
+  for (const id of ids) {
+    await deleteJob(id);
+  }
+  state.selectedJobIds.clear();
+});
 el.clearTerminalBtn.addEventListener("click", () => {
   el.terminalOutput.textContent = "No terminal output yet.";
 });

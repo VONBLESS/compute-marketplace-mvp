@@ -115,6 +115,28 @@ def cancel_job(job_id: str, email: str = Depends(get_current_email)) -> MessageR
     return MessageResponse(message='Job cancelled')
 
 
+@router.delete('/{job_id}', response_model=MessageResponse)
+def delete_job(job_id: str, email: str = Depends(get_current_email)) -> MessageResponse:
+    store.cleanup_expired_reservations()
+    job = store.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if job.owner_email != email:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    if job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+        host = store.hosts.get(job.assigned_host_id)
+        if host:
+            store.release(host, job)
+            if host.current_job_id == job.id:
+                host.current_job_id = None
+
+    if job_id in store.queue:
+        store.queue.remove(job_id)
+    del store.jobs[job_id]
+    return MessageResponse(message='Job deleted')
+
+
 @router.post('/{job_id}/complete', response_model=MessageResponse)
 def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depends(get_host_from_api_key)) -> MessageResponse:
     store.cleanup_expired_reservations()

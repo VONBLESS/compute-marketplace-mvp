@@ -196,6 +196,12 @@ input:focus, select:focus {
   overflow-wrap: anywhere;
 }
 
+.item pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  font-family: "IBM Plex Mono", monospace;
+}
+
 .item.selectable {
   text-align: left;
   width: 100%;
