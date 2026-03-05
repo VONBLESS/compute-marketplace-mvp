@@ -15,6 +15,8 @@ router = APIRouter()
 def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email)) -> JobRecord:
     store.cleanup_expired_reservations()
     state_changed = False
+    if payload.requested_vram_mb > 0 and not payload.requires_gpu:
+        raise HTTPException(status_code=400, detail='requested_vram_mb requires requires_gpu=true')
     command = payload.command or ['python', '--version']
     if payload.mode == 'quick_run':
         if payload.command_text is not None and payload.command_text.strip():
@@ -42,15 +44,27 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             old_cpu = int(existing_session.get('cpu_cores', payload.requested_cpu_cores))
             old_ram = int(existing_session.get('ram_mb', payload.requested_ram_mb))
             old_gpu = bool(existing_session.get('requires_gpu', payload.requires_gpu))
+            old_vram = int(existing_session.get('requested_vram_mb', payload.requested_vram_mb))
 
             delta_cpu = payload.requested_cpu_cores - old_cpu
             delta_ram = payload.requested_ram_mb - old_ram
+            delta_vram = payload.requested_vram_mb - old_vram
             if delta_cpu > 0 and host.cpu_cores_free < delta_cpu:
                 raise HTTPException(status_code=409, detail='Not enough free CPU to scale retained session')
             if delta_ram > 0 and host.ram_mb_free < delta_ram:
                 raise HTTPException(status_code=409, detail='Not enough free RAM to scale retained session')
-            if payload.requires_gpu and not old_gpu and (not host.gpu_name or host.gpu_in_use):
+            if payload.requires_gpu and not host.gpu_name:
                 raise HTTPException(status_code=409, detail='GPU is not available to scale retained session')
+            if payload.requires_gpu and host.vram_mb is not None:
+                if payload.requested_vram_mb > host.vram_mb:
+                    raise HTTPException(status_code=400, detail='Requested VRAM exceeds host GPU capacity')
+                current_vram_free = host.vram_mb_free if host.vram_mb_free is not None else host.vram_mb
+                if delta_vram > 0 and current_vram_free < delta_vram:
+                    raise HTTPException(status_code=409, detail='Not enough free VRAM to scale retained session')
+            if payload.requested_vram_mb > 0 and host.vram_mb is None:
+                raise HTTPException(status_code=409, detail='Host does not report VRAM capacity')
+            if payload.requires_gpu and not old_gpu and host.vram_mb is None and host.gpu_in_use:
+                raise HTTPException(status_code=409, detail='GPU is currently busy')
 
             if delta_cpu > 0:
                 host.cpu_cores_free -= delta_cpu
@@ -62,14 +76,24 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             elif delta_ram < 0:
                 host.ram_mb_free = min(host.ram_mb, host.ram_mb_free + abs(delta_ram))
 
-            if payload.requires_gpu and not old_gpu:
-                host.gpu_in_use = True
-            if old_gpu and not payload.requires_gpu:
-                host.gpu_in_use = False
+            if host.vram_mb is not None:
+                if host.vram_mb_free is None:
+                    host.vram_mb_free = host.vram_mb
+                if delta_vram > 0:
+                    host.vram_mb_free = max(0, host.vram_mb_free - delta_vram)
+                elif delta_vram < 0:
+                    host.vram_mb_free = min(host.vram_mb, host.vram_mb_free + abs(delta_vram))
+                host.gpu_in_use = payload.requires_gpu and host.vram_mb_free < host.vram_mb
+            else:
+                if payload.requires_gpu and not old_gpu:
+                    host.gpu_in_use = True
+                if old_gpu and not payload.requires_gpu:
+                    host.gpu_in_use = False
 
             existing_session['cpu_cores'] = payload.requested_cpu_cores
             existing_session['ram_mb'] = payload.requested_ram_mb
             existing_session['requires_gpu'] = payload.requires_gpu
+            existing_session['requested_vram_mb'] = payload.requested_vram_mb
             target_host_id = session_host_id
             host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
             state_changed = True
@@ -88,8 +112,15 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
                     continue
                 if payload.requested_ram_mb > host.ram_mb_free:
                     continue
-                if payload.requires_gpu and (not host.gpu_name or host.gpu_in_use):
-                    continue
+                if payload.requires_gpu:
+                    if not host.gpu_name:
+                        continue
+                    if host.vram_mb is not None:
+                        current_vram_free = host.vram_mb_free if host.vram_mb_free is not None else host.vram_mb
+                        if payload.requested_vram_mb > current_vram_free:
+                            continue
+                    elif payload.requested_vram_mb > 0 or host.gpu_in_use:
+                        continue
                 selected = host
                 break
             if not selected:
@@ -98,7 +129,13 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             selected.cpu_cores_free -= payload.requested_cpu_cores
             selected.ram_mb_free -= payload.requested_ram_mb
             if payload.requires_gpu:
-                selected.gpu_in_use = True
+                if selected.vram_mb is not None:
+                    if selected.vram_mb_free is None:
+                        selected.vram_mb_free = selected.vram_mb
+                    selected.vram_mb_free = max(0, selected.vram_mb_free - payload.requested_vram_mb)
+                    selected.gpu_in_use = selected.vram_mb_free < selected.vram_mb
+                else:
+                    selected.gpu_in_use = True
             selected.status = 'busy'
             target_host_id = selected.id
             store.sessions[payload.session_id] = {
@@ -107,6 +144,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
                 'cpu_cores': payload.requested_cpu_cores,
                 'ram_mb': payload.requested_ram_mb,
                 'requires_gpu': payload.requires_gpu,
+                'requested_vram_mb': payload.requested_vram_mb,
             }
             state_changed = True
 
@@ -122,6 +160,10 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             raise HTTPException(status_code=400, detail='Requested RAM exceeds preferred host capacity')
         if payload.requires_gpu and not preferred_host.gpu_name:
             raise HTTPException(status_code=400, detail='Preferred host does not provide GPU')
+        if payload.requires_gpu and preferred_host.vram_mb is not None and payload.requested_vram_mb > preferred_host.vram_mb:
+            raise HTTPException(status_code=400, detail='Requested VRAM exceeds preferred host capacity')
+        if payload.requested_vram_mb > 0 and preferred_host.vram_mb is None:
+            raise HTTPException(status_code=400, detail='Preferred host does not report VRAM capacity')
 
     job = JobRecord(
         owner_email=email,
@@ -130,6 +172,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
         session_id=payload.session_id,
         retain_progress=payload.retain_progress,
         requires_gpu=payload.requires_gpu,
+        requested_vram_mb=payload.requested_vram_mb,
         requested_cpu_cores=payload.requested_cpu_cores,
         requested_ram_mb=payload.requested_ram_mb,
         timeout_seconds=payload.timeout_seconds,
@@ -183,7 +226,14 @@ def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depe
         host.cpu_cores_free = min(host.cpu_cores, host.cpu_cores_free + int(session.get('cpu_cores', 0)))
         host.ram_mb_free = min(host.ram_mb, host.ram_mb_free + int(session.get('ram_mb', 0)))
         if bool(session.get('requires_gpu')):
-            host.gpu_in_use = False
+            released_vram = int(session.get('requested_vram_mb', 0))
+            if host.vram_mb is not None:
+                if host.vram_mb_free is None:
+                    host.vram_mb_free = host.vram_mb
+                host.vram_mb_free = min(host.vram_mb, host.vram_mb_free + released_vram)
+                host.gpu_in_use = host.vram_mb_free < host.vram_mb
+            else:
+                host.gpu_in_use = False
         host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
     del store.sessions[session_id]
     store.persist_state()
@@ -214,6 +264,7 @@ def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depe
         retain_progress=True,
         session_action='stop',
         requires_gpu=payload.requires_gpu,
+        requested_vram_mb=0,
         requested_cpu_cores=1,
         requested_ram_mb=128,
         timeout_seconds=120,
@@ -245,6 +296,7 @@ def list_sessions(email: str = Depends(get_current_email)) -> list[SessionRecord
                 cpu_cores=int(session.get('cpu_cores', 0)),
                 ram_mb=int(session.get('ram_mb', 0)),
                 requires_gpu=bool(session.get('requires_gpu', False)),
+                requested_vram_mb=int(session.get('requested_vram_mb', 0)),
             )
         )
     return sessions

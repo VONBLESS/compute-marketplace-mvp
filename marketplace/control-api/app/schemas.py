@@ -57,6 +57,7 @@ class HostRecord(BaseModel):
     ram_mb_free: int
     gpu_name: str | None = None
     vram_mb: int | None = None
+    vram_mb_free: int | None = None
     gpu_in_use: bool = False
     status: str = 'idle'
     current_job_id: str | None = None
@@ -74,6 +75,7 @@ class HostPublicRecord(BaseModel):
     ram_mb_free: int
     gpu_name: str | None = None
     vram_mb: int | None = None
+    vram_mb_free: int | None = None
     status: str
     last_seen_at: datetime
     verified: bool
@@ -89,6 +91,7 @@ class HostPublicRecord(BaseModel):
             ram_mb_free=host.ram_mb_free,
             gpu_name=host.gpu_name,
             vram_mb=host.vram_mb,
+            vram_mb_free=host.vram_mb_free,
             status=host.status,
             last_seen_at=host.last_seen_at,
             verified=host.verified,
@@ -102,6 +105,7 @@ class JobCreateRequest(BaseModel):
     session_id: str | None = None
     retain_progress: bool = False
     requires_gpu: bool = False
+    requested_vram_mb: int = Field(default=0, ge=0)
     requested_cpu_cores: int = Field(default=1, ge=1)
     requested_ram_mb: int = Field(default=512, ge=128)
     timeout_seconds: int = Field(default=600, ge=10, le=7200)
@@ -118,6 +122,7 @@ class JobRecord(BaseModel):
     retain_progress: bool = False
     session_action: Literal['none', 'stop'] = 'none'
     requires_gpu: bool
+    requested_vram_mb: int = 0
     requested_cpu_cores: int
     requested_ram_mb: int
     timeout_seconds: int
@@ -158,6 +163,7 @@ class SessionRecord(BaseModel):
     cpu_cores: int
     ram_mb: int
     requires_gpu: bool
+    requested_vram_mb: int = 0
 
 
 class FileUploadResponse(BaseModel):

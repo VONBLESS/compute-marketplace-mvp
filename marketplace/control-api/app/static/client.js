@@ -22,6 +22,7 @@ const el = {
   timeout: document.getElementById("timeoutInput"),
   requestedCpu: document.getElementById("requestedCpuInput"),
   requestedRam: document.getElementById("requestedRamInput"),
+  requestedVram: document.getElementById("requestedVramInput"),
   requiresGpu: document.getElementById("requiresGpuInput"),
   retainProgressInput: document.getElementById("retainProgressInput"),
   sessionIdOutput: document.getElementById("sessionIdOutput"),
@@ -173,7 +174,7 @@ function renderPreferredHostOptions(hosts) {
   hosts.forEach((host) => {
     const option = document.createElement("option");
     option.value = host.id;
-    option.textContent = `${host.host_name} (${host.status}, ${host.cpu_cores_free}/${host.cpu_cores}C free, ${host.ram_mb_free}/${host.ram_mb}MB free${host.gpu_name ? ", GPU" : ""})`;
+    option.textContent = `${host.host_name} (${host.status}, ${host.cpu_cores_free}/${host.cpu_cores}C free, ${host.ram_mb_free}/${host.ram_mb}MB free${host.gpu_name ? `, GPU${host.vram_mb_free !== null && host.vram_mb !== null ? ` ${host.vram_mb_free}/${host.vram_mb}MB` : ""}` : ""})`;
     el.preferredHost.appendChild(option);
   });
 
@@ -195,7 +196,7 @@ function renderResources(hosts) {
     if (host.id === state.selectedHostId) {
       item.classList.add("selected");
     }
-    item.textContent = `name=${host.host_name}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\nvram_mb=${host.vram_mb || "unknown"}\nlast_seen_at=${host.last_seen_at}`;
+    item.textContent = `name=${host.host_name}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\nvram_free_mb=${host.vram_mb_free ?? "unknown"}/${host.vram_mb ?? "unknown"}\nlast_seen_at=${host.last_seen_at}`;
     item.addEventListener("click", () => {
       state.selectedHostId = host.id;
       el.preferredHost.value = host.id;
@@ -286,7 +287,7 @@ function renderJobs(jobs) {
       item.appendChild(topRow);
 
       const details = document.createElement("pre");
-      details.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\nsession_id=${job.session_id || "none"}\nretain_progress=${job.retain_progress}\nsession_action=${job.session_action}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
+      details.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\nsession_id=${job.session_id || "none"}\nretain_progress=${job.retain_progress}\nsession_action=${job.session_action}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequested_vram_mb=${job.requested_vram_mb || 0}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
       item.appendChild(details);
       el.jobsList.appendChild(item);
     });
@@ -473,6 +474,7 @@ async function submitSingleCommand(commandText) {
         session_id: state.retainProgress ? state.sessionId : null,
         retain_progress: state.retainProgress,
         requires_gpu: el.requiresGpu.checked,
+        requested_vram_mb: Number(el.requestedVram.value || 0),
         requested_cpu_cores: Number(el.requestedCpu.value),
         requested_ram_mb: Number(el.requestedRam.value),
         timeout_seconds: Number(el.timeout.value),

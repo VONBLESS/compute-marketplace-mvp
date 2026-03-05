@@ -147,7 +147,7 @@ function renderHosts(hosts) {
   hosts.forEach((host) => {
     const item = document.createElement("div");
     item.className = "item";
-    item.textContent = `name=${host.host_name}\nid=${host.id}\nverified=${host.verified}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\napi_key=${host.api_key}\nlast_seen_at=${host.last_seen_at}`;
+    item.textContent = `name=${host.host_name}\nid=${host.id}\nverified=${host.verified}\nstatus=${host.status}\ncpu_free=${host.cpu_cores_free}/${host.cpu_cores}\nram_free_mb=${host.ram_mb_free}/${host.ram_mb}\ngpu_name=${host.gpu_name || "none"}\nvram_free_mb=${host.vram_mb_free ?? "unknown"}/${host.vram_mb ?? "unknown"}\napi_key=${host.api_key}\nlast_seen_at=${host.last_seen_at}`;
     el.hostsList.appendChild(item);
   });
   updateVerificationHint(hosts);

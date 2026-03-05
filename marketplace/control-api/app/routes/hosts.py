@@ -23,6 +23,10 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
 
         used_cpu = max(0, existing.cpu_cores - existing.cpu_cores_free)
         used_ram = max(0, existing.ram_mb - existing.ram_mb_free)
+        used_vram = 0
+        if existing.vram_mb is not None:
+            current_vram_free = existing.vram_mb_free if existing.vram_mb_free is not None else existing.vram_mb
+            used_vram = max(0, existing.vram_mb - current_vram_free)
 
         existing.cpu_cores = payload.cpu_cores
         existing.ram_mb = payload.ram_mb
@@ -30,6 +34,13 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
         existing.vram_mb = payload.vram_mb
         existing.cpu_cores_free = max(0, payload.cpu_cores - used_cpu)
         existing.ram_mb_free = max(0, payload.ram_mb - used_ram)
+        if payload.vram_mb is None:
+            existing.vram_mb_free = None
+            if not payload.gpu_name:
+                existing.gpu_in_use = False
+        else:
+            existing.vram_mb_free = max(0, payload.vram_mb - used_vram)
+            existing.gpu_in_use = existing.vram_mb_free < payload.vram_mb
         store.persist_state()
         return existing
 
@@ -42,6 +53,7 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
         ram_mb_free=payload.ram_mb,
         gpu_name=payload.gpu_name,
         vram_mb=payload.vram_mb,
+        vram_mb_free=payload.vram_mb,
     )
     store.hosts[host.id] = host
     store.persist_state()

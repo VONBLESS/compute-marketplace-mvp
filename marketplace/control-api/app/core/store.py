@@ -58,6 +58,7 @@ class InMemoryStore:
                 'cpu_cores': int(session_data.get('cpu_cores', 0)),
                 'ram_mb': int(session_data.get('ram_mb', 0)),
                 'requires_gpu': bool(session_data.get('requires_gpu', False)),
+                'requested_vram_mb': int(session_data.get('requested_vram_mb', 0)),
             }
 
     def persist_state(self) -> None:
@@ -79,8 +80,19 @@ class InMemoryStore:
             return False
         if job.requested_ram_mb > host.ram_mb_free:
             return False
-        if job.requires_gpu and (not host.gpu_name or host.gpu_in_use):
-            return False
+        if job.requires_gpu:
+            if not host.gpu_name:
+                return False
+            requested_vram = max(0, int(getattr(job, 'requested_vram_mb', 0) or 0))
+            if host.vram_mb is not None:
+                if host.vram_mb_free is None:
+                    host.vram_mb_free = host.vram_mb
+                if requested_vram > host.vram_mb_free:
+                    return False
+            elif requested_vram > 0:
+                return False
+            elif host.gpu_in_use:
+                return False
         return True
 
     def allocate(self, host: HostRecord, job: JobRecord) -> bool:
@@ -89,7 +101,14 @@ class InMemoryStore:
         host.cpu_cores_free -= job.requested_cpu_cores
         host.ram_mb_free -= job.requested_ram_mb
         if job.requires_gpu:
-            host.gpu_in_use = True
+            requested_vram = max(0, int(getattr(job, 'requested_vram_mb', 0) or 0))
+            if host.vram_mb is not None:
+                if host.vram_mb_free is None:
+                    host.vram_mb_free = host.vram_mb
+                host.vram_mb_free = max(0, host.vram_mb_free - requested_vram)
+                host.gpu_in_use = host.vram_mb_free < host.vram_mb
+            else:
+                host.gpu_in_use = True
         host.status = 'busy'
         return True
 
@@ -97,8 +116,19 @@ class InMemoryStore:
         host.cpu_cores_free = min(host.cpu_cores, host.cpu_cores_free + job.requested_cpu_cores)
         host.ram_mb_free = min(host.ram_mb, host.ram_mb_free + job.requested_ram_mb)
         if job.requires_gpu:
-            host.gpu_in_use = False
-        host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
+            requested_vram = max(0, int(getattr(job, 'requested_vram_mb', 0) or 0))
+            if host.vram_mb is not None:
+                if host.vram_mb_free is None:
+                    host.vram_mb_free = host.vram_mb
+                host.vram_mb_free = min(host.vram_mb, host.vram_mb_free + requested_vram)
+                host.gpu_in_use = host.vram_mb_free < host.vram_mb
+            else:
+                host.gpu_in_use = False
+        host.status = 'busy' if (
+            host.cpu_cores_free < host.cpu_cores
+            or host.ram_mb_free < host.ram_mb
+            or host.gpu_in_use
+        ) else 'idle'
 
     def cleanup_expired_reservations(self) -> None:
         now = datetime.now(timezone.utc)
