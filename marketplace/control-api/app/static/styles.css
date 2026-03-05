@@ -183,6 +183,12 @@ input:focus, select:focus {
   gap: 8px;
 }
 
+.jobs-scroll {
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .hidden {
   display: none !important;
 }
