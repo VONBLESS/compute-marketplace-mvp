@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import get_current_email, get_host_from_api_key
 from app.core.store import store
-from app.schemas import JobCreateRequest, JobLogChunkRequest, JobRecord, JobResultReport, MessageResponse, SessionStopRequest, utc_now
+from app.schemas import JobCreateRequest, JobLogChunkRequest, JobRecord, JobResultReport, MessageResponse, SessionRecord, SessionStopRequest, utc_now
 
 router = APIRouter()
 
@@ -223,6 +223,25 @@ def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depe
 def list_jobs(email: str = Depends(get_current_email)) -> list[JobRecord]:
     store.cleanup_expired_reservations()
     return [job for job in store.jobs.values() if job.owner_email == email]
+
+
+@router.get('/sessions', response_model=list[SessionRecord])
+def list_sessions(email: str = Depends(get_current_email)) -> list[SessionRecord]:
+    sessions: list[SessionRecord] = []
+    for session_id, session in store.sessions.items():
+        if session.get('owner_email') != email:
+            continue
+        sessions.append(
+            SessionRecord(
+                session_id=session_id,
+                owner_email=email,
+                host_id=str(session.get('host_id', '')),
+                cpu_cores=int(session.get('cpu_cores', 0)),
+                ram_mb=int(session.get('ram_mb', 0)),
+                requires_gpu=bool(session.get('requires_gpu', False)),
+            )
+        )
+    return sessions
 
 
 @router.get('/{job_id}', response_model=JobRecord)

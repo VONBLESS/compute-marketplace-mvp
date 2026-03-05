@@ -151,6 +151,15 @@ class SessionStopRequest(BaseModel):
     requires_gpu: bool = False
 
 
+class SessionRecord(BaseModel):
+    session_id: str
+    owner_email: str
+    host_id: str
+    cpu_cores: int
+    ram_mb: int
+    requires_gpu: bool
+
+
 class FileUploadResponse(BaseModel):
     file_id: str
     filename: str

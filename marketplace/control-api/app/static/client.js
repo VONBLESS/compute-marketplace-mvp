@@ -3,8 +3,8 @@ const state = {
   selectedHostId: "",
   selectedJobIds: new Set(),
   uploadedUrl: "",
-  retainProgress: false,
-  sessionId: "",
+  retainProgress: localStorage.getItem("marketplace_retain_progress") === "1",
+  sessionId: localStorage.getItem("marketplace_session_id") || "",
   terminalConnected: false,
   terminalBusy: false,
   terminalQueue: [],
@@ -38,6 +38,8 @@ const el = {
   refreshBtn: document.getElementById("refreshBtn"),
   resourcesList: document.getElementById("resourcesList"),
   resourcesEmpty: document.getElementById("resourcesEmpty"),
+  sessionsList: document.getElementById("sessionsList"),
+  sessionsEmpty: document.getElementById("sessionsEmpty"),
   jobsList: document.getElementById("jobsList"),
   jobsEmpty: document.getElementById("jobsEmpty"),
   selectAllJobsBtn: document.getElementById("selectAllJobsBtn"),
@@ -136,6 +138,15 @@ function setAuthState(authenticated) {
   el.topLogoutBtn.classList.toggle("hidden", !authenticated);
 }
 
+function persistSessionState() {
+  localStorage.setItem("marketplace_retain_progress", state.retainProgress ? "1" : "0");
+  if (state.sessionId) {
+    localStorage.setItem("marketplace_session_id", state.sessionId);
+  } else {
+    localStorage.removeItem("marketplace_session_id");
+  }
+}
+
 function refreshTerminalButtons() {
   el.connectTerminalBtn.disabled = state.terminalConnected;
   el.disconnectTerminalBtn.disabled = !state.terminalConnected;
@@ -192,6 +203,37 @@ function renderResources(hosts) {
       notify(`Preferred host selected: ${host.host_name}`, "success");
     });
     el.resourcesList.appendChild(item);
+  });
+}
+
+function renderSessions(sessions) {
+  el.sessionsList.innerHTML = "";
+  el.sessionsEmpty.style.display = sessions.length ? "none" : "block";
+  const ids = new Set(sessions.map((s) => s.session_id));
+  if (state.sessionId && !ids.has(state.sessionId)) {
+    state.sessionId = "";
+    el.sessionIdOutput.value = "";
+    persistSessionState();
+  }
+  sessions.forEach((session) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "item selectable";
+    if (session.session_id === state.sessionId) {
+      item.classList.add("selected");
+    }
+    item.textContent = `session_id=${session.session_id}\nhost_id=${session.host_id}\ncpu_cores=${session.cpu_cores}\nram_mb=${session.ram_mb}\nrequires_gpu=${session.requires_gpu}`;
+    item.addEventListener("click", () => {
+      state.sessionId = session.session_id;
+      state.retainProgress = true;
+      el.retainProgressInput.checked = true;
+      el.sessionIdOutput.value = state.sessionId;
+      persistSessionState();
+      refreshTerminalButtons();
+      renderSessions(sessions);
+      notify(`Selected session ${session.session_id}`, "success");
+    });
+    el.sessionsList.appendChild(item);
   });
 }
 
@@ -300,16 +342,19 @@ async function refreshAll() {
     return;
   }
   try {
-    const [hosts, jobs] = await Promise.all([api("/hosts/available"), api("/jobs")]);
+    const [hosts, sessions, jobs] = await Promise.all([api("/hosts/available"), api("/jobs/sessions"), api("/jobs")]);
     setAuthState(true);
     renderPreferredHostOptions(hosts);
     renderResources(hosts);
+    renderSessions(sessions);
     renderJobs(jobs);
     updateActiveJobOutput(jobs);
   } catch (err) {
     el.resourcesList.innerHTML = "";
+    el.sessionsList.innerHTML = "";
     el.jobsList.innerHTML = "";
     el.resourcesEmpty.style.display = "block";
+    el.sessionsEmpty.style.display = "block";
     el.jobsEmpty.style.display = "block";
     if (isAuthError(err)) {
       setAuthState(false);
@@ -365,8 +410,6 @@ el.topLogoutBtn.addEventListener("click", async () => {
   state.terminalConnected = false;
   state.terminalBusy = false;
   state.terminalQueue = [];
-  state.sessionId = "";
-  el.sessionIdOutput.value = "";
   state.activeJobId = null;
   state.activeOutputLength = 0;
   refreshTerminalButtons();
@@ -388,6 +431,7 @@ el.connectTerminalBtn.addEventListener("click", () => {
     state.sessionId = "";
     el.sessionIdOutput.value = "";
   }
+  persistSessionState();
   refreshTerminalButtons();
   appendTerminal("[terminal connected]");
   notify("Terminal connected.", "success");
@@ -415,6 +459,7 @@ el.retainProgressInput.addEventListener("change", () => {
     state.sessionId = "";
     el.sessionIdOutput.value = "";
   }
+  persistSessionState();
   refreshTerminalButtons();
 });
 
@@ -481,6 +526,7 @@ function runTerminalCommand() {
   if (state.retainProgress && !state.sessionId) {
     state.sessionId = generateSessionId();
     el.sessionIdOutput.value = state.sessionId;
+    persistSessionState();
   }
 
   state.terminalQueue.push(...commands);
@@ -505,6 +551,7 @@ async function stopRetainedSession() {
     log(`Session stop requested: ${state.sessionId}`);
     state.sessionId = "";
     el.sessionIdOutput.value = "";
+    persistSessionState();
     refreshTerminalButtons();
   } catch (err) {
     notify(`Stop session failed: ${err.message}`, "error");
@@ -598,6 +645,8 @@ el.uploadFileBtn.addEventListener("click", async () => {
 });
 
 setAuthState(false);
+el.retainProgressInput.checked = state.retainProgress;
+el.sessionIdOutput.value = state.sessionId;
 refreshTerminalButtons();
 refreshAll();
 setInterval(refreshAll, 800);
