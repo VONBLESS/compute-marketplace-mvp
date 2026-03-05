@@ -21,8 +21,94 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
         elif payload.command is None:
             raise HTTPException(status_code=400, detail='Command text is required for quick_run')
 
-    if payload.preferred_host_id:
-        preferred_host = store.hosts.get(payload.preferred_host_id)
+    target_host_id = payload.preferred_host_id
+
+    if payload.mode == 'quick_run' and payload.retain_progress:
+        if not payload.session_id:
+            raise HTTPException(status_code=400, detail='session_id is required when retain_progress is enabled')
+
+        existing_session = store.sessions.get(payload.session_id)
+        if existing_session:
+            if existing_session.get('owner_email') != email:
+                raise HTTPException(status_code=403, detail='Session belongs to another user')
+            session_host_id = str(existing_session.get('host_id'))
+            host = store.hosts.get(session_host_id)
+            if not host:
+                raise HTTPException(status_code=400, detail='Session host not found')
+            if target_host_id and target_host_id != session_host_id:
+                raise HTTPException(status_code=400, detail='Retained session is pinned to another host')
+
+            old_cpu = int(existing_session.get('cpu_cores', payload.requested_cpu_cores))
+            old_ram = int(existing_session.get('ram_mb', payload.requested_ram_mb))
+            old_gpu = bool(existing_session.get('requires_gpu', payload.requires_gpu))
+
+            delta_cpu = payload.requested_cpu_cores - old_cpu
+            delta_ram = payload.requested_ram_mb - old_ram
+            if delta_cpu > 0 and host.cpu_cores_free < delta_cpu:
+                raise HTTPException(status_code=409, detail='Not enough free CPU to scale retained session')
+            if delta_ram > 0 and host.ram_mb_free < delta_ram:
+                raise HTTPException(status_code=409, detail='Not enough free RAM to scale retained session')
+            if payload.requires_gpu and not old_gpu and (not host.gpu_name or host.gpu_in_use):
+                raise HTTPException(status_code=409, detail='GPU is not available to scale retained session')
+
+            if delta_cpu > 0:
+                host.cpu_cores_free -= delta_cpu
+            elif delta_cpu < 0:
+                host.cpu_cores_free = min(host.cpu_cores, host.cpu_cores_free + abs(delta_cpu))
+
+            if delta_ram > 0:
+                host.ram_mb_free -= delta_ram
+            elif delta_ram < 0:
+                host.ram_mb_free = min(host.ram_mb, host.ram_mb_free + abs(delta_ram))
+
+            if payload.requires_gpu and not old_gpu:
+                host.gpu_in_use = True
+            if old_gpu and not payload.requires_gpu:
+                host.gpu_in_use = False
+
+            existing_session['cpu_cores'] = payload.requested_cpu_cores
+            existing_session['ram_mb'] = payload.requested_ram_mb
+            existing_session['requires_gpu'] = payload.requires_gpu
+            target_host_id = session_host_id
+            host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
+        else:
+            candidate_hosts = []
+            if target_host_id:
+                preferred = store.hosts.get(target_host_id)
+                if preferred:
+                    candidate_hosts = [preferred]
+            else:
+                candidate_hosts = [host for host in store.hosts.values() if host.verified]
+
+            selected = None
+            for host in candidate_hosts:
+                if payload.requested_cpu_cores > host.cpu_cores_free:
+                    continue
+                if payload.requested_ram_mb > host.ram_mb_free:
+                    continue
+                if payload.requires_gpu and (not host.gpu_name or host.gpu_in_use):
+                    continue
+                selected = host
+                break
+            if not selected:
+                raise HTTPException(status_code=409, detail='No host can reserve retained session resources')
+
+            selected.cpu_cores_free -= payload.requested_cpu_cores
+            selected.ram_mb_free -= payload.requested_ram_mb
+            if payload.requires_gpu:
+                selected.gpu_in_use = True
+            selected.status = 'busy'
+            target_host_id = selected.id
+            store.sessions[payload.session_id] = {
+                'owner_email': email,
+                'host_id': target_host_id,
+                'cpu_cores': payload.requested_cpu_cores,
+                'ram_mb': payload.requested_ram_mb,
+                'requires_gpu': payload.requires_gpu,
+            }
+
+    if target_host_id:
+        preferred_host = store.hosts.get(target_host_id)
         if not preferred_host:
             raise HTTPException(status_code=400, detail='Preferred host not found')
         if not preferred_host.verified:
@@ -45,7 +131,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
         requested_ram_mb=payload.requested_ram_mb,
         timeout_seconds=payload.timeout_seconds,
         reserve_seconds=payload.reserve_seconds,
-        preferred_host_id=payload.preferred_host_id,
+        preferred_host_id=target_host_id,
     )
 
     if payload.mode == 'reserve':
@@ -82,15 +168,27 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
 @router.post('/sessions/{session_id}/stop', response_model=MessageResponse)
 def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depends(get_current_email)) -> MessageResponse:
     store.cleanup_expired_reservations()
+    session = store.sessions.get(session_id)
+    if not session or session.get('owner_email') != email:
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    session_host_id = str(session.get('host_id'))
+    host = store.hosts.get(session_host_id)
+    if host:
+        host.cpu_cores_free = min(host.cpu_cores, host.cpu_cores_free + int(session.get('cpu_cores', 0)))
+        host.ram_mb_free = min(host.ram_mb, host.ram_mb_free + int(session.get('ram_mb', 0)))
+        if bool(session.get('requires_gpu')):
+            host.gpu_in_use = False
+        host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
+    del store.sessions[session_id]
+
     session_jobs = [
         job for job in store.jobs.values()
         if job.owner_email == email and job.session_id == session_id and job.retain_progress
     ]
-    if not session_jobs:
-        raise HTTPException(status_code=404, detail='Session not found')
 
-    target_host_id = payload.preferred_host_id
-    if not target_host_id:
+    target_host_id = payload.preferred_host_id or session_host_id
+    if not target_host_id and session_jobs:
         for job in reversed(sorted(session_jobs, key=lambda item: item.updated_at)):
             if job.assigned_host_id:
                 target_host_id = job.assigned_host_id
@@ -148,7 +246,7 @@ def cancel_job(job_id: str, email: str = Depends(get_current_email)) -> MessageR
         raise HTTPException(status_code=403, detail='Forbidden')
     if job.status in {'completed', 'failed', 'cancelled', 'expired'}:
         return MessageResponse(message='Job already terminal')
-    if job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+    if (not job.retain_progress) and job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
         host = store.hosts.get(job.assigned_host_id)
         if host:
             store.release(host, job)
@@ -168,7 +266,7 @@ def delete_job(job_id: str, email: str = Depends(get_current_email)) -> MessageR
     if job.owner_email != email:
         raise HTTPException(status_code=403, detail='Forbidden')
 
-    if job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+    if (not job.retain_progress) and job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
         host = store.hosts.get(job.assigned_host_id)
         if host:
             store.release(host, job)
@@ -198,7 +296,7 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
 
     host = store.hosts.get(host_id)
     if host:
-        if job.session_action != 'stop':
+        if (not job.retain_progress) and job.session_action != 'stop':
             store.release(host, job)
         if host.current_job_id == job.id:
             host.current_job_id = None

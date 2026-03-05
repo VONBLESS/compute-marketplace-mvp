@@ -12,6 +12,7 @@ class InMemoryStore:
         self.users: dict[str, dict[str, str]] = {}
         self.tokens: dict[str, str] = {}
         self.hosts: dict[str, HostRecord] = {}
+        self.sessions: dict[str, dict[str, str | int | bool]] = {}
         self.jobs: dict[str, JobRecord] = {}
         self.queue: deque[str] = deque()
         self.files: dict[str, dict[str, str]] = {}
