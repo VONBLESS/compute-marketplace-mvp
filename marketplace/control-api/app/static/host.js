@@ -16,7 +16,6 @@ const el = {
   gpu: document.getElementById("gpuInput"),
   vram: document.getElementById("vramInput"),
   registerHostBtn: document.getElementById("registerHostBtn"),
-  refreshBtn: document.getElementById("refreshBtn"),
   hostApiKey: document.getElementById("hostApiKeyInput"),
   installerApiOutput: document.getElementById("installerApiOutput"),
   installerKeyOutput: document.getElementById("installerKeyOutput"),
@@ -253,8 +252,6 @@ el.registerHostBtn.addEventListener("click", async () => {
     el.registerHostBtn.disabled = false;
   }
 });
-
-el.refreshBtn.addEventListener("click", refreshHosts);
 
 el.hostApiKey.value = state.hostApiKey;
 updateInstallerFields();

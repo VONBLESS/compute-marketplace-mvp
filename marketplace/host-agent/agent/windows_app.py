@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tkinter as tk
+import os
 from tkinter import messagebox
 
 import requests
@@ -29,11 +30,14 @@ def _start_agent_process() -> None:
     creationflags = 0
     if sys.platform == 'win32':
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+    child_env = os.environ.copy()
+    # Avoid one-file temp extraction reuse that can trigger _MEI cleanup warnings on exit.
+    child_env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
 
     if getattr(sys, 'frozen', False):
-        subprocess.Popen([sys.executable, '--run-agent'], creationflags=creationflags)
+        subprocess.Popen([sys.executable, '--run-agent'], creationflags=creationflags, env=child_env, close_fds=True)
     else:
-        subprocess.Popen([sys.executable, '-m', 'agent.service'], creationflags=creationflags)
+        subprocess.Popen([sys.executable, '-m', 'agent.service'], creationflags=creationflags, env=child_env, close_fds=True)
 
 
 def _run_gui() -> None:
