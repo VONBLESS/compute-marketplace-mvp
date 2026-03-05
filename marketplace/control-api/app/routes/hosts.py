@@ -13,6 +13,25 @@ router = APIRouter()
 
 @router.post('/register', response_model=HostRecord)
 def register_host(payload: HostRegisterRequest, email: str = Depends(get_current_email)) -> HostRecord:
+    for existing in store.hosts.values():
+        if existing.owner_email != email or existing.host_name != payload.host_name:
+            continue
+
+        # Keep host definition stable until first heartbeat verifies ownership/runtime.
+        if not existing.verified:
+            return existing
+
+        used_cpu = max(0, existing.cpu_cores - existing.cpu_cores_free)
+        used_ram = max(0, existing.ram_mb - existing.ram_mb_free)
+
+        existing.cpu_cores = payload.cpu_cores
+        existing.ram_mb = payload.ram_mb
+        existing.gpu_name = payload.gpu_name
+        existing.vram_mb = payload.vram_mb
+        existing.cpu_cores_free = max(0, payload.cpu_cores - used_cpu)
+        existing.ram_mb_free = max(0, payload.ram_mb - used_ram)
+        return existing
+
     host = HostRecord(
         owner_email=email,
         host_name=payload.host_name,

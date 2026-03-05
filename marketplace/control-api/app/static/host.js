@@ -128,14 +128,17 @@ function updateVerificationHint(hosts) {
   if (!host) {
     el.verificationHint.textContent = "Register host, download installer, run agent, then wait for verification.";
     el.verificationHint.classList.remove("verified");
+    el.registerHostBtn.disabled = false;
     return;
   }
   if (host.verified) {
     el.verificationHint.textContent = `Verified at ${host.verified_at || host.last_seen_at}. This host can now share compute.`;
     el.verificationHint.classList.add("verified");
+    el.registerHostBtn.disabled = false;
   } else {
-    el.verificationHint.textContent = "Verification pending. Run agent installer using this host API key and wait for heartbeat.";
+    el.verificationHint.textContent = "Verification pending. Run agent installer and wait for heartbeat. Register is disabled until verification succeeds.";
     el.verificationHint.classList.remove("verified");
+    el.registerHostBtn.disabled = true;
   }
 }
 
@@ -220,6 +223,10 @@ el.logoutBtn.addEventListener("click", async () => {
 el.detectBtn.addEventListener("click", autoDetectHardware);
 
 el.registerHostBtn.addEventListener("click", async () => {
+  if (el.registerHostBtn.disabled) {
+    return;
+  }
+  el.registerHostBtn.disabled = true;
   try {
     const host = await api("/hosts/register", {
       method: "POST",
@@ -242,6 +249,8 @@ el.registerHostBtn.addEventListener("click", async () => {
   } catch (err) {
     log(`Host registration failed: ${err.message}`);
     notify(`Host registration failed: ${err.message}`, "error");
+  } finally {
+    el.registerHostBtn.disabled = false;
   }
 });
 
