@@ -32,12 +32,17 @@ This scaffold gives you:
    - Save returned `api_key`
 
 4. Start host agent (Windows PowerShell):
-   - Download installer from `http://localhost:8000/downloads/marketplace-host-agent.exe`
-   - On host page, register host and copy generated PowerShell start command
-   - Run command to start `.exe` with `API_BASE_URL` and `HOST_API_KEY`
+   - Download installer from `http://localhost:8000/downloads/marketplace-host-agent-setup.exe`
+   - On host page, register host and copy `API Base URL` + `Host API Key`
+   - Open setup `.exe`, paste values, click `Save + Verify + Start`
    - Host becomes shareable only after first heartbeat verification
 
-5. Submit a job as a client:
+5. Build setup `.exe` on Windows (for distribution):
+   - `cd marketplace/host-agent`
+   - `powershell -ExecutionPolicy Bypass -File .\build-setup-exe.ps1`
+   - Output: `dist/marketplace-host-agent-setup.exe`
+
+6. Submit a job as a client:
    - Register/login client user
    - `POST /jobs` with bearer token and payload like:
      `{ "command": ["python", "--version"], "requested_cpu_cores": 2, "requested_ram_mb": 2048, "requires_gpu": false, "timeout_seconds": 120 }`

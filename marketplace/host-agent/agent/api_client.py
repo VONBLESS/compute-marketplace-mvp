@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import requests
 
-from agent.config import settings
+from agent.config import Settings, load_settings
 
 
 class ControlApiClient:
-    def __init__(self) -> None:
-        self.base = settings.api_base_url.rstrip('/')
-        self.headers = {'X-Host-Api-Key': settings.host_api_key}
+    def __init__(self, settings: Settings | None = None) -> None:
+        cfg = settings or load_settings()
+        self.base = cfg.api_base_url.rstrip('/')
+        self.headers = {'X-Host-Api-Key': cfg.host_api_key}
 
     def heartbeat(self, status: str, current_job_id: str | None, cpu_percent: float, ram_percent: float) -> None:
         requests.post(

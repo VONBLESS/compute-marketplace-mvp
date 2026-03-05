@@ -5,7 +5,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from agent.api_client import ControlApiClient
-from agent.config import settings
+from agent.config import reload_settings
 from agent.metrics import collect_basic_metrics
 from agent.runner import run_job
 
@@ -13,10 +13,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 
 
 def main() -> None:
+    settings = reload_settings()
+
     if not settings.host_api_key:
         raise RuntimeError('HOST_API_KEY is required')
 
-    client = ControlApiClient()
+    client = ControlApiClient(settings)
     max_workers = max(1, settings.max_parallel_jobs)
     running_jobs: dict[str, Future[tuple[str, int, str]]] = {}
 

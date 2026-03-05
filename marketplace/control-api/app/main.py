@@ -8,7 +8,7 @@ from app.routes import auth, hosts, jobs
 
 app = FastAPI(title='Compute Marketplace Control API', version='0.1.0')
 static_dir = Path(__file__).parent / 'static'
-agent_binary_path = Path('/opt/host-agent/marketplace-host-agent.exe')
+agent_binary_path = Path('/opt/host-agent/marketplace-host-agent-setup.exe')
 
 app.include_router(auth.router, prefix='/auth', tags=['auth'])
 app.include_router(hosts.router, prefix='/hosts', tags=['hosts'])
@@ -36,12 +36,12 @@ def host_page() -> FileResponse:
     return FileResponse(static_dir / 'host.html')
 
 
-@app.get('/downloads/marketplace-host-agent.exe', include_in_schema=False)
+@app.get('/downloads/marketplace-host-agent-setup.exe', include_in_schema=False)
 def download_host_agent() -> FileResponse:
     if not agent_binary_path.exists():
         raise HTTPException(status_code=404, detail='Host agent binary is not available on server')
     return FileResponse(
         agent_binary_path,
         media_type='application/octet-stream',
-        filename='marketplace-host-agent.exe',
+        filename='marketplace-host-agent-setup.exe',
     )

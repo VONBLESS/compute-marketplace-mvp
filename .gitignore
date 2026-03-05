@@ -32,6 +32,7 @@ htmlcov/
 *.key
 id_rsa
 id_rsa.pub
+marketplace/host-agent/marketplace-host-agent-setup.exe
 
 # IDE/editor
 .idea/

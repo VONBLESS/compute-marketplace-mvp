@@ -80,13 +80,17 @@
         <input id="hostApiKeyInput" type="text" readonly>
       </label>
       <label>
-        Agent Start Command (PowerShell)
-        <textarea id="agentCommandOutput" rows="4" readonly></textarea>
+        API Base URL (paste into installer)
+        <input id="installerApiOutput" type="text" readonly>
+      </label>
+      <label>
+        Host API Key (paste into installer)
+        <input id="installerKeyOutput" type="text" readonly>
       </label>
       <div class="row">
-        <a id="downloadAgentBtn" class="btn" href="/downloads/marketplace-host-agent.exe">Download Host Agent (.exe)</a>
+        <a id="downloadAgentBtn" class="btn" href="/downloads/marketplace-host-agent-setup.exe">Download Host Agent Setup (.exe)</a>
       </div>
-      <p id="verificationHint" class="muted">Verification pending. Your host becomes shareable only after the agent sends heartbeat.</p>
+      <p id="verificationHint" class="muted">Download setup, enter API URL + key, click Save + Verify + Start. Host becomes shareable after heartbeat.</p>
     </section>
 
     <section class="card">

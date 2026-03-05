@@ -18,7 +18,8 @@ const el = {
   registerHostBtn: document.getElementById("registerHostBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   hostApiKey: document.getElementById("hostApiKeyInput"),
-  agentCommandOutput: document.getElementById("agentCommandOutput"),
+  installerApiOutput: document.getElementById("installerApiOutput"),
+  installerKeyOutput: document.getElementById("installerKeyOutput"),
   verificationHint: document.getElementById("verificationHint"),
   hostsList: document.getElementById("hostsList"),
   hostsEmpty: document.getElementById("hostsEmpty"),
@@ -115,13 +116,11 @@ function autoDetectHardware() {
   notify("Hardware auto-detected.", "success");
 }
 
-function updateAgentCommand() {
+function updateInstallerFields() {
   const base = window.location.origin;
   const key = state.hostApiKey || "<host_api_key>";
-  el.agentCommandOutput.value =
-    `$env:API_BASE_URL='${base}'\n` +
-    `$env:HOST_API_KEY='${key}'\n` +
-    `.\\marketplace-host-agent.exe`;
+  el.installerApiOutput.value = base;
+  el.installerKeyOutput.value = key;
 }
 
 function updateVerificationHint(hosts) {
@@ -163,7 +162,7 @@ async function refreshHosts() {
   try {
     const hosts = await api("/hosts");
     renderHosts(hosts);
-    updateAgentCommand();
+    updateInstallerFields();
   } catch (err) {
     el.hostsList.innerHTML = "";
     el.hostsEmpty.style.display = "block";
@@ -236,7 +235,7 @@ el.registerHostBtn.addEventListener("click", async () => {
     state.hostId = host.id;
     persist();
     el.hostApiKey.value = state.hostApiKey;
-    updateAgentCommand();
+    updateInstallerFields();
     log(`Host registered. API key captured for agent: ${host.api_key}`);
     notify("Host registered successfully.", "success");
     await refreshHosts();
@@ -249,7 +248,7 @@ el.registerHostBtn.addEventListener("click", async () => {
 el.refreshBtn.addEventListener("click", refreshHosts);
 
 el.hostApiKey.value = state.hostApiKey;
-updateAgentCommand();
+updateInstallerFields();
 autoDetectHardware();
 refreshHosts();
 setInterval(refreshHosts, 5000);
