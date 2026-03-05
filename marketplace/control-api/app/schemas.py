@@ -134,3 +134,9 @@ class JobResultReport(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class FileUploadResponse(BaseModel):
+    file_id: str
+    filename: str
+    download_url: str

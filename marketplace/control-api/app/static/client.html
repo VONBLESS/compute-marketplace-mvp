@@ -59,7 +59,7 @@
       <div class="grid two">
         <label id="commandWrap">
           Command (JSON list)
-          <input id="commandInput" type="text" value='["python","--version"]'>
+          <textarea id="commandInput" rows="6">["python","--version"]</textarea>
         </label>
         <label id="timeoutWrap">
           Timeout Seconds
@@ -87,6 +87,17 @@
         </select>
       </label>
       <div class="row">
+        <input id="uploadFileInput" type="file">
+        <button id="uploadFileBtn" class="btn ghost" type="button">Upload File</button>
+      </div>
+      <label>
+        Uploaded File URL
+        <input id="uploadedUrlOutput" type="text" readonly placeholder="Upload a file to get URL">
+      </label>
+      <div class="row">
+        <button id="insertUrlBtn" class="btn ghost" type="button">Insert URL Into Command</button>
+      </div>
+      <div class="row">
         <button id="submitJobBtn" class="btn">Submit Job</button>
         <button id="refreshBtn" class="btn ghost">Refresh</button>
       </div>
@@ -108,11 +119,17 @@
     <section class="card">
       <h2>Terminal Output</h2>
       <p class="muted">Outputs from completed/failed quick-run jobs.</p>
+      <div class="row">
+        <button id="clearTerminalBtn" class="btn ghost" type="button">Clear Terminal</button>
+      </div>
       <pre id="terminalOutput" class="log"></pre>
     </section>
 
     <section class="card">
       <h2>Activity</h2>
+      <div class="row">
+        <button id="clearActivityBtn" class="btn ghost" type="button">Clear Activity</button>
+      </div>
       <pre id="logOutput" class="log"></pre>
     </section>
   </main>

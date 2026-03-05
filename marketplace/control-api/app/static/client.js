@@ -1,6 +1,7 @@
 const state = {
   authenticated: false,
   selectedHostId: "",
+  uploadedUrl: "",
 };
 
 const el = {
@@ -21,6 +22,10 @@ const el = {
   requestedRam: document.getElementById("requestedRamInput"),
   requiresGpu: document.getElementById("requiresGpuInput"),
   preferredHost: document.getElementById("preferredHostSelect"),
+  uploadFileInput: document.getElementById("uploadFileInput"),
+  uploadFileBtn: document.getElementById("uploadFileBtn"),
+  uploadedUrlOutput: document.getElementById("uploadedUrlOutput"),
+  insertUrlBtn: document.getElementById("insertUrlBtn"),
   submitJobBtn: document.getElementById("submitJobBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   resourcesList: document.getElementById("resourcesList"),
@@ -29,6 +34,8 @@ const el = {
   jobsEmpty: document.getElementById("jobsEmpty"),
   terminalOutput: document.getElementById("terminalOutput"),
   logOutput: document.getElementById("logOutput"),
+  clearTerminalBtn: document.getElementById("clearTerminalBtn"),
+  clearActivityBtn: document.getElementById("clearActivityBtn"),
   statusPill: document.getElementById("statusPill"),
 };
 
@@ -76,6 +83,22 @@ async function api(path, options = {}) {
   }
   if (response.status === 204) {
     return null;
+  }
+  return response.json();
+}
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/files/upload", {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(`${response.status}: ${data.detail || response.statusText}`);
   }
   return response.json();
 }
@@ -171,6 +194,25 @@ function renderTerminalOutput(jobs) {
     });
 
   el.terminalOutput.textContent = outputs.length ? outputs.join("\n") : "No terminal output yet.";
+}
+
+function insertUploadedUrlIntoCommand() {
+  if (!state.uploadedUrl) {
+    notify("No uploaded file URL yet.", "error");
+    return;
+  }
+
+  try {
+    const command = JSON.parse(el.command.value);
+    if (!Array.isArray(command)) {
+      throw new Error("Command must be JSON array.");
+    }
+    command.push(state.uploadedUrl);
+    el.command.value = JSON.stringify(command, null, 2);
+    notify("Uploaded URL inserted into command.", "success");
+  } catch (err) {
+    notify(`Could not insert URL: ${err.message}`, "error");
+  }
 }
 
 async function refreshAll() {
@@ -292,6 +334,28 @@ el.submitJobBtn.addEventListener("click", async () => {
 
 el.refreshBtn.addEventListener("click", refreshAll);
 el.mode.addEventListener("change", syncModeUI);
+el.clearTerminalBtn.addEventListener("click", () => {
+  el.terminalOutput.textContent = "No terminal output yet.";
+});
+el.clearActivityBtn.addEventListener("click", () => {
+  el.logOutput.textContent = "";
+});
+el.insertUrlBtn.addEventListener("click", insertUploadedUrlIntoCommand);
+el.uploadFileBtn.addEventListener("click", async () => {
+  const file = el.uploadFileInput.files && el.uploadFileInput.files[0];
+  if (!file) {
+    notify("Pick a file first.", "error");
+    return;
+  }
+  try {
+    const data = await uploadFile(file);
+    state.uploadedUrl = data.download_url;
+    el.uploadedUrlOutput.value = state.uploadedUrl;
+    notify("File uploaded successfully.", "success");
+  } catch (err) {
+    notify(`Upload failed: ${err.message}`, "error");
+  }
+});
 
 setAuthState(false);
 syncModeUI();

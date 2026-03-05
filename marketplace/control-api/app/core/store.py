@@ -13,6 +13,7 @@ class InMemoryStore:
         self.hosts: dict[str, HostRecord] = {}
         self.jobs: dict[str, JobRecord] = {}
         self.queue: deque[str] = deque()
+        self.files: dict[str, dict[str, str]] = {}
 
     def touch_job(self, job: JobRecord) -> None:
         job.updated_at = datetime.now(timezone.utc)
