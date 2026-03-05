@@ -7,6 +7,7 @@ Primary project folder:
 
 Open the full MVP documentation here:
 - [marketplace/README.md](./marketplace/README.md)
+  - Includes detailed endpoint reference, scheduling flow, resource sharing, and scaling logic.
 
 ## Quick Start
 
