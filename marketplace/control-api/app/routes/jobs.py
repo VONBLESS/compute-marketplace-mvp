@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import get_current_email, get_host_from_api_key
 from app.core.store import store
-from app.schemas import JobCreateRequest, JobRecord, JobResultReport, MessageResponse, utc_now
+from app.schemas import JobCreateRequest, JobLogChunkRequest, JobRecord, JobResultReport, MessageResponse, utc_now
 
 router = APIRouter()
 
@@ -120,7 +120,8 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
 
     job.status = payload.status
     job.exit_code = payload.exit_code
-    job.output = payload.output
+    if payload.output:
+        job.output += payload.output if not job.output else '\n' + payload.output
     store.touch_job(job)
 
     host = store.hosts.get(host_id)
@@ -130,3 +131,25 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
             host.current_job_id = None
 
     return MessageResponse(message='Result accepted')
+
+
+@router.post('/{job_id}/log', response_model=MessageResponse)
+def report_log_chunk(job_id: str, payload: JobLogChunkRequest, host_id: str = Depends(get_host_from_api_key)) -> MessageResponse:
+    store.cleanup_expired_reservations()
+    job = store.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='Job not found')
+    if job.assigned_host_id != host_id:
+        raise HTTPException(status_code=403, detail='Host is not assigned to this job')
+    if job.status not in {'assigned', 'running'}:
+        return MessageResponse(message='Job is not active')
+
+    if job.status == 'assigned':
+        job.status = 'running'
+
+    chunk = payload.chunk
+    job.output += chunk if not job.output else '\n' + chunk
+    if len(job.output) > 100_000:
+        job.output = job.output[-100_000:]
+    store.touch_job(job)
+    return MessageResponse(message='Log chunk accepted')

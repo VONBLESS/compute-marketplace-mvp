@@ -70,7 +70,12 @@ def main() -> None:
                     job.get('requested_cpu_cores'),
                     job.get('requested_ram_mb'),
                 )
-                running_jobs[job_id] = executor.submit(run_job, job['command'], job['timeout_seconds'])
+                running_jobs[job_id] = executor.submit(
+                    run_job,
+                    job['command'],
+                    job['timeout_seconds'],
+                    lambda line, job_id=job_id: client.report_log_chunk(job_id, line),
+                )
 
             time.sleep(settings.poll_interval_seconds)
 

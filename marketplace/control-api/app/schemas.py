@@ -132,6 +132,10 @@ class JobResultReport(BaseModel):
     output: str = ''
 
 
+class JobLogChunkRequest(BaseModel):
+    chunk: str = Field(min_length=1, max_length=4000)
+
+
 class MessageResponse(BaseModel):
     message: str
 

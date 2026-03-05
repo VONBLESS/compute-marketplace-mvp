@@ -181,7 +181,7 @@ function renderJobs(jobs) {
 
 function renderTerminalOutput(jobs) {
   const outputs = jobs
-    .filter((job) => job.mode === "quick_run" && (job.status === "completed" || job.status === "failed") && job.output)
+    .filter((job) => job.mode === "quick_run" && job.output)
     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
     .slice(0, 10)
     .map((job) => {
@@ -360,4 +360,4 @@ el.uploadFileBtn.addEventListener("click", async () => {
 setAuthState(false);
 syncModeUI();
 refreshAll();
-setInterval(refreshAll, 5000);
+setInterval(refreshAll, 1200);

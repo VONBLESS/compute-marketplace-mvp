@@ -33,6 +33,16 @@ class ControlApiClient:
         requests.post(
             f'{self.base}/jobs/{job_id}/complete',
             headers=self.headers,
-            json={'status': status, 'exit_code': exit_code, 'output': output[:2000]},
+            json={'status': status, 'exit_code': exit_code, 'output': output},
+            timeout=15,
+        ).raise_for_status()
+
+    def report_log_chunk(self, job_id: str, chunk: str) -> None:
+        if not chunk:
+            return
+        requests.post(
+            f'{self.base}/jobs/{job_id}/log',
+            headers=self.headers,
+            json={'chunk': chunk[:4000]},
             timeout=15,
         ).raise_for_status()
