@@ -145,3 +145,4 @@ class FileUploadResponse(BaseModel):
     file_id: str
     filename: str
     download_url: str
+    expires_at: datetime

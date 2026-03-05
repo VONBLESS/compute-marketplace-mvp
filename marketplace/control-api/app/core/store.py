@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 
 from app.schemas import HostRecord, JobRecord
 
@@ -59,6 +60,35 @@ class InMemoryStore:
                         host.current_job_id = None
             job.status = 'expired'
             self.touch_job(job)
+
+    def cleanup_expired_files(self) -> None:
+        now = datetime.now(timezone.utc)
+        expired_file_ids: list[str] = []
+        for file_id, metadata in self.files.items():
+            expires_at = metadata.get('expires_at')
+            if not expires_at:
+                continue
+            try:
+                expires_dt = datetime.fromisoformat(expires_at)
+            except Exception:  # noqa: BLE001
+                expired_file_ids.append(file_id)
+                continue
+            if expires_dt <= now:
+                expired_file_ids.append(file_id)
+
+        for file_id in expired_file_ids:
+            metadata = self.files.pop(file_id, None)
+            if not metadata:
+                continue
+            path_value = metadata.get('path')
+            if not path_value:
+                continue
+            path = Path(path_value)
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:  # noqa: BLE001
+                continue
 
 
 store = InMemoryStore()
