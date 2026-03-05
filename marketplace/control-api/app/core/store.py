@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from threading import RLock
 from pathlib import Path
 
-from app.schemas import HostRecord, JobRecord
+from app.schemas import ComposeJobRecord, HostRecord, JobRecord
 
 
 class InMemoryStore:
@@ -19,6 +19,7 @@ class InMemoryStore:
         self.hosts: dict[str, HostRecord] = {}
         self.sessions: dict[str, dict[str, str | int | bool]] = {}
         self.jobs: dict[str, JobRecord] = {}
+        self.compose_jobs: dict[str, ComposeJobRecord] = {}
         self.queue: deque[str] = deque()
         self.files: dict[str, dict[str, str]] = {}
         self.load_state()
@@ -35,7 +36,8 @@ class InMemoryStore:
         tokens = payload.get('tokens', {})
         hosts = payload.get('hosts', {})
         sessions = payload.get('sessions', {})
-        if not isinstance(users, Mapping) or not isinstance(tokens, Mapping) or not isinstance(hosts, Mapping) or not isinstance(sessions, Mapping):
+        compose_jobs = payload.get('compose_jobs', {})
+        if not isinstance(users, Mapping) or not isinstance(tokens, Mapping) or not isinstance(hosts, Mapping) or not isinstance(sessions, Mapping) or not isinstance(compose_jobs, Mapping):
             return
 
         self.users = {str(k): dict(v) for k, v in users.items() if isinstance(v, Mapping)}
@@ -59,6 +61,14 @@ class InMemoryStore:
                 'ram_mb': int(session_data.get('ram_mb', 0)),
                 'requires_gpu': bool(session_data.get('requires_gpu', False)),
             }
+        self.compose_jobs = {}
+        for compose_id, compose_data in compose_jobs.items():
+            if not isinstance(compose_data, Mapping):
+                continue
+            try:
+                self.compose_jobs[str(compose_id)] = ComposeJobRecord(**compose_data)
+            except Exception:  # noqa: BLE001
+                continue
 
     def persist_state(self) -> None:
         with self._lock:
@@ -67,6 +77,7 @@ class InMemoryStore:
                 'tokens': self.tokens,
                 'hosts': {host_id: host.model_dump(mode='json') for host_id, host in self.hosts.items()},
                 'sessions': self.sessions,
+                'compose_jobs': {compose_id: compose.model_dump(mode='json') for compose_id, compose in self.compose_jobs.items()},
             }
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
             self._state_file.write_text(json.dumps(payload, indent=2), encoding='utf-8')

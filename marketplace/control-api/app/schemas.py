@@ -160,6 +160,36 @@ class SessionRecord(BaseModel):
     requires_gpu: bool
 
 
+class ComposeJobCreateRequest(BaseModel):
+    command_text: str = Field(min_length=1)
+    requested_cpu_cores: int = Field(default=1, ge=1)
+    requested_ram_mb: int = Field(default=512, ge=128)
+    timeout_seconds: int = Field(default=600, ge=10, le=7200)
+    gpu_required: bool = True
+
+
+class ComposeJobRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    owner_email: str
+    command_text: str
+    status: Literal['queued', 'running', 'completed', 'failed', 'cancelled'] = 'queued'
+    cpu_host_id: str
+    gpu_host_id: str
+    cpu_job_id: str
+    gpu_job_id: str
+    requested_cpu_cores: int
+    requested_ram_mb: int
+    timeout_seconds: int
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ComposeJobDetailResponse(BaseModel):
+    compose_job: ComposeJobRecord
+    cpu_job: JobRecord | None = None
+    gpu_job: JobRecord | None = None
+
+
 class FileUploadResponse(BaseModel):
     file_id: str
     filename: str

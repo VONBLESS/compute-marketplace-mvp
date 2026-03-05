@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+from datetime import timezone, datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.core.security import get_current_email
+from app.core.store import store
+from app.schemas import ComposeJobCreateRequest, ComposeJobDetailResponse, ComposeJobRecord, JobRecord, MessageResponse
+
+router = APIRouter()
+
+
+def _touch_compose(compose: ComposeJobRecord) -> None:
+    compose.updated_at = datetime.now(timezone.utc)
+
+
+def _select_host_pair(requested_cpu_cores: int, requested_ram_mb: int) -> tuple[str, str]:
+    verified_hosts = [host for host in store.hosts.values() if host.verified]
+    cpu_candidates = [
+        host for host in verified_hosts
+        if host.cpu_cores_free >= requested_cpu_cores and host.ram_mb_free >= requested_ram_mb
+    ]
+    gpu_candidates = [
+        host for host in verified_hosts
+        if host.gpu_name and not host.gpu_in_use
+    ]
+    for cpu_host in cpu_candidates:
+        for gpu_host in gpu_candidates:
+            if gpu_host.id == cpu_host.id:
+                continue
+            return cpu_host.id, gpu_host.id
+    raise HTTPException(status_code=409, detail='No compatible CPU/GPU host pair is available')
+
+
+def _compute_compose_status(compose: ComposeJobRecord) -> ComposeJobRecord:
+    cpu_job = store.jobs.get(compose.cpu_job_id)
+    gpu_job = store.jobs.get(compose.gpu_job_id)
+    statuses = [job.status for job in [cpu_job, gpu_job] if job]
+    if not statuses:
+        compose.status = 'failed'
+    elif any(status == 'cancelled' for status in statuses):
+        compose.status = 'cancelled'
+    elif any(status == 'failed' for status in statuses):
+        compose.status = 'failed'
+    elif all(status == 'completed' for status in statuses):
+        compose.status = 'completed'
+    elif any(status in {'assigned', 'running'} for status in statuses):
+        compose.status = 'running'
+    else:
+        compose.status = 'queued'
+    _touch_compose(compose)
+    return compose
+
+
+@router.post('', response_model=ComposeJobDetailResponse)
+def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(get_current_email)) -> ComposeJobDetailResponse:
+    if not payload.gpu_required:
+        raise HTTPException(status_code=400, detail='cross_host_compose requires gpu_required=true')
+
+    cpu_host_id, gpu_host_id = _select_host_pair(payload.requested_cpu_cores, payload.requested_ram_mb)
+    command = ['cmd', '/c', payload.command_text.strip()]
+
+    cpu_job = JobRecord(
+        owner_email=email,
+        command=command,
+        mode='quick_run',
+        requires_gpu=False,
+        requested_cpu_cores=payload.requested_cpu_cores,
+        requested_ram_mb=payload.requested_ram_mb,
+        timeout_seconds=payload.timeout_seconds,
+        preferred_host_id=cpu_host_id,
+    )
+    gpu_job = JobRecord(
+        owner_email=email,
+        command=command,
+        mode='quick_run',
+        requires_gpu=True,
+        requested_cpu_cores=1,
+        requested_ram_mb=512,
+        timeout_seconds=payload.timeout_seconds,
+        preferred_host_id=gpu_host_id,
+    )
+    store.jobs[cpu_job.id] = cpu_job
+    store.jobs[gpu_job.id] = gpu_job
+    store.queue.append(cpu_job.id)
+    store.queue.append(gpu_job.id)
+
+    compose = ComposeJobRecord(
+        owner_email=email,
+        command_text=payload.command_text.strip(),
+        status='queued',
+        cpu_host_id=cpu_host_id,
+        gpu_host_id=gpu_host_id,
+        cpu_job_id=cpu_job.id,
+        gpu_job_id=gpu_job.id,
+        requested_cpu_cores=payload.requested_cpu_cores,
+        requested_ram_mb=payload.requested_ram_mb,
+        timeout_seconds=payload.timeout_seconds,
+    )
+    store.compose_jobs[compose.id] = compose
+    store.persist_state()
+    return ComposeJobDetailResponse(compose_job=compose, cpu_job=cpu_job, gpu_job=gpu_job)
+
+
+@router.get('', response_model=list[ComposeJobRecord])
+def list_compose_jobs(email: str = Depends(get_current_email)) -> list[ComposeJobRecord]:
+    rows = [compose for compose in store.compose_jobs.values() if compose.owner_email == email]
+    for row in rows:
+        _compute_compose_status(row)
+    return sorted(rows, key=lambda row: row.created_at, reverse=True)
+
+
+@router.get('/{compose_id}', response_model=ComposeJobDetailResponse)
+def get_compose_job(compose_id: str, email: str = Depends(get_current_email)) -> ComposeJobDetailResponse:
+    compose = store.compose_jobs.get(compose_id)
+    if not compose:
+        raise HTTPException(status_code=404, detail='Compose job not found')
+    if compose.owner_email != email:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    _compute_compose_status(compose)
+    return ComposeJobDetailResponse(
+        compose_job=compose,
+        cpu_job=store.jobs.get(compose.cpu_job_id),
+        gpu_job=store.jobs.get(compose.gpu_job_id),
+    )
+
+
+@router.post('/{compose_id}/cancel', response_model=MessageResponse)
+def cancel_compose_job(compose_id: str, email: str = Depends(get_current_email)) -> MessageResponse:
+    compose = store.compose_jobs.get(compose_id)
+    if not compose:
+        raise HTTPException(status_code=404, detail='Compose job not found')
+    if compose.owner_email != email:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    for child_id in [compose.cpu_job_id, compose.gpu_job_id]:
+        job = store.jobs.get(child_id)
+        if not job:
+            continue
+        if job.status in {'completed', 'failed', 'cancelled', 'expired'}:
+            continue
+        if job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+            host = store.hosts.get(job.assigned_host_id)
+            if host:
+                store.release(host, job)
+                if host.current_job_id == job.id:
+                    host.current_job_id = None
+        if child_id in store.queue:
+            store.queue.remove(child_id)
+        job.status = 'cancelled'
+        store.touch_job(job)
+
+    compose.status = 'cancelled'
+    _touch_compose(compose)
+    store.persist_state()
+    return MessageResponse(message='Compose job cancelled')

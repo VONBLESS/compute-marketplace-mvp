@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routes import auth, files, hosts, jobs
+from app.routes import auth, compose_jobs, files, hosts, jobs
 
 app = FastAPI(title='Compute Marketplace Control API', version='0.1.0')
 static_dir = Path(__file__).parent / 'static'
@@ -13,6 +13,7 @@ agent_binary_path = Path('/opt/host-agent/marketplace-host-agent-setup.exe')
 app.include_router(auth.router, prefix='/auth', tags=['auth'])
 app.include_router(hosts.router, prefix='/hosts', tags=['hosts'])
 app.include_router(jobs.router, prefix='/jobs', tags=['jobs'])
+app.include_router(compose_jobs.router, prefix='/compose-jobs', tags=['compose-jobs'])
 app.include_router(files.router, prefix='/files', tags=['files'])
 app.mount('/static', StaticFiles(directory=static_dir), name='static')
 
