@@ -1,7 +1,40 @@
-.venv/
-.idea/
+# Python bytecode/cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build/distribution artifacts
+build/
+dist/
+*.spec
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test/coverage/tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Environment/config secrets
 .env
+.env.*
+
+# IDE/editor
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs/runtime
+*.log
