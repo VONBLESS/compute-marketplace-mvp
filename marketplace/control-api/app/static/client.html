@@ -45,10 +45,23 @@
       <h2>Submit Job</h2>
       <div class="grid two">
         <label>
+          Mode
+          <select id="modeSelect">
+            <option value="quick_run">Quick Run</option>
+            <option value="reserve">Reserve Only</option>
+          </select>
+        </label>
+        <label id="reserveDurationWrap" class="hidden">
+          Reserve Seconds
+          <input id="reserveSecondsInput" type="number" value="120" min="30" max="86400">
+        </label>
+      </div>
+      <div class="grid two">
+        <label id="commandWrap">
           Command (JSON list)
           <input id="commandInput" type="text" value='["python","--version"]'>
         </label>
-        <label>
+        <label id="timeoutWrap">
           Timeout Seconds
           <input id="timeoutInput" type="number" value="120" min="10" max="7200">
         </label>

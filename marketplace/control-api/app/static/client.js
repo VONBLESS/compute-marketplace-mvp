@@ -10,6 +10,11 @@ const el = {
   registerBtn: document.getElementById("registerBtn"),
   loginBtn: document.getElementById("loginBtn"),
   topLogoutBtn: document.getElementById("topLogoutBtn"),
+  mode: document.getElementById("modeSelect"),
+  reserveDurationWrap: document.getElementById("reserveDurationWrap"),
+  reserveSeconds: document.getElementById("reserveSecondsInput"),
+  commandWrap: document.getElementById("commandWrap"),
+  timeoutWrap: document.getElementById("timeoutWrap"),
   command: document.getElementById("commandInput"),
   timeout: document.getElementById("timeoutInput"),
   requestedCpu: document.getElementById("requestedCpuInput"),
@@ -85,6 +90,13 @@ function setAuthState(authenticated) {
   el.topLogoutBtn.classList.toggle("hidden", !authenticated);
 }
 
+function syncModeUI() {
+  const reserveMode = el.mode.value === "reserve";
+  el.reserveDurationWrap.classList.toggle("hidden", !reserveMode);
+  el.commandWrap.classList.toggle("hidden", reserveMode);
+  el.timeoutWrap.classList.toggle("hidden", reserveMode);
+}
+
 function renderPreferredHostOptions(hosts) {
   const current = state.selectedHostId;
   el.preferredHost.innerHTML = "";
@@ -138,7 +150,7 @@ function renderJobs(jobs) {
     .forEach((job) => {
       const item = document.createElement("div");
       item.className = "item";
-      item.textContent = `id=${job.id}\nstatus=${job.status}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nupdated_at=${job.updated_at}`;
+      item.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
       el.jobsList.appendChild(item);
     });
 }
@@ -221,26 +233,31 @@ el.preferredHost.addEventListener("change", () => {
 });
 
 el.submitJobBtn.addEventListener("click", async () => {
-  let command;
-  try {
-    command = JSON.parse(el.command.value);
-    if (!Array.isArray(command) || !command.length) {
-      throw new Error("Command must be a non-empty JSON array.");
+  const mode = el.mode.value;
+  let command = ["python", "--version"];
+  if (mode === "quick_run") {
+    try {
+      command = JSON.parse(el.command.value);
+      if (!Array.isArray(command) || !command.length) {
+        throw new Error("Command must be a non-empty JSON array.");
+      }
+    } catch (err) {
+      log(`Invalid command: ${err.message}`);
+      notify(`Invalid command: ${err.message}`, "error");
+      return;
     }
-  } catch (err) {
-    log(`Invalid command: ${err.message}`);
-    notify(`Invalid command: ${err.message}`, "error");
-    return;
   }
   try {
     const job = await api("/jobs", {
       method: "POST",
       body: JSON.stringify({
+        mode,
         command,
         requires_gpu: el.requiresGpu.checked,
         requested_cpu_cores: Number(el.requestedCpu.value),
         requested_ram_mb: Number(el.requestedRam.value),
-        timeout_seconds: Number(el.timeout.value),
+        timeout_seconds: mode === "quick_run" ? Number(el.timeout.value) : 120,
+        reserve_seconds: mode === "reserve" ? Number(el.reserveSeconds.value) : 120,
         preferred_host_id: state.selectedHostId || null,
       }),
     });
@@ -254,7 +271,9 @@ el.submitJobBtn.addEventListener("click", async () => {
 });
 
 el.refreshBtn.addEventListener("click", refreshAll);
+el.mode.addEventListener("change", syncModeUI);
 
 setAuthState(false);
+syncModeUI();
 refreshAll();
 setInterval(refreshAll, 5000);

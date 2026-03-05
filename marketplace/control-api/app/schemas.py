@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
 
@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def utc_after(seconds: int) -> datetime:
+    return utc_now() + timedelta(seconds=seconds)
 
 
 class RegisterRequest(BaseModel):
@@ -89,10 +93,12 @@ class HostPublicRecord(BaseModel):
 
 class JobCreateRequest(BaseModel):
     command: list[str] = Field(default_factory=lambda: ['python', '--version'])
+    mode: Literal['quick_run', 'reserve'] = 'quick_run'
     requires_gpu: bool = False
     requested_cpu_cores: int = Field(default=1, ge=1)
     requested_ram_mb: int = Field(default=512, ge=128)
     timeout_seconds: int = Field(default=600, ge=10, le=7200)
+    reserve_seconds: int = Field(default=120, ge=30, le=86400)
     preferred_host_id: str | None = None
 
 
@@ -100,13 +106,16 @@ class JobRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     owner_email: str
     command: list[str]
+    mode: Literal['quick_run', 'reserve'] = 'quick_run'
     requires_gpu: bool
     requested_cpu_cores: int
     requested_ram_mb: int
     timeout_seconds: int
-    status: Literal['queued', 'assigned', 'running', 'completed', 'failed', 'cancelled'] = 'queued'
+    status: Literal['queued', 'assigned', 'running', 'reserved', 'completed', 'failed', 'cancelled', 'expired'] = 'queued'
     assigned_host_id: str | None = None
     preferred_host_id: str | None = None
+    reserve_seconds: int = 120
+    reserve_until: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

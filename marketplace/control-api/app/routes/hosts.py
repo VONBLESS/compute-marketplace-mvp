@@ -29,16 +29,19 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
 
 @router.get('', response_model=list[HostRecord])
 def list_hosts(email: str = Depends(get_current_email)) -> list[HostRecord]:
+    store.cleanup_expired_reservations()
     return [host for host in store.hosts.values() if host.owner_email == email]
 
 
 @router.get('/available', response_model=list[HostPublicRecord])
 def list_available_hosts(_: str = Depends(get_current_email)) -> list[HostPublicRecord]:
+    store.cleanup_expired_reservations()
     return [HostPublicRecord.from_host(host) for host in store.hosts.values()]
 
 
 @router.post('/heartbeat')
 def heartbeat(payload: HostHeartbeatRequest, host_id: str = Depends(get_host_from_api_key)) -> dict[str, str]:
+    store.cleanup_expired_reservations()
     host = store.hosts.get(host_id)
     if host is None:
         raise HTTPException(status_code=404, detail='Host not found')
@@ -50,6 +53,7 @@ def heartbeat(payload: HostHeartbeatRequest, host_id: str = Depends(get_host_fro
 
 @router.get('/assignable-job', response_model=JobRecord | None)
 def get_assignable_job(host_id: str = Depends(get_host_from_api_key)) -> JobRecord | None:
+    store.cleanup_expired_reservations()
     host = store.hosts.get(host_id)
     if host is None:
         raise HTTPException(status_code=404, detail='Host not found')
@@ -57,6 +61,9 @@ def get_assignable_job(host_id: str = Depends(get_host_from_api_key)) -> JobReco
     for job_id in list(store.queue):
         job = store.jobs[job_id]
         if job.status != 'queued':
+            store.queue.remove(job_id)
+            continue
+        if job.mode != 'quick_run':
             store.queue.remove(job_id)
             continue
         if job.preferred_host_id and job.preferred_host_id != host.id:

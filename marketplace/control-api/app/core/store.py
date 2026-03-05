@@ -43,5 +43,21 @@ class InMemoryStore:
             host.gpu_in_use = False
         host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
 
+    def cleanup_expired_reservations(self) -> None:
+        now = datetime.now(timezone.utc)
+        for job in self.jobs.values():
+            if job.mode != 'reserve' or job.status != 'reserved' or not job.reserve_until:
+                continue
+            if job.reserve_until > now:
+                continue
+            if job.assigned_host_id:
+                host = self.hosts.get(job.assigned_host_id)
+                if host:
+                    self.release(host, job)
+                    if host.current_job_id == job.id:
+                        host.current_job_id = None
+            job.status = 'expired'
+            self.touch_job(job)
+
 
 store = InMemoryStore()
