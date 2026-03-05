@@ -201,18 +201,9 @@ function insertUploadedUrlIntoCommand() {
     notify("No uploaded file URL yet.", "error");
     return;
   }
-
-  try {
-    const command = JSON.parse(el.command.value);
-    if (!Array.isArray(command)) {
-      throw new Error("Command must be JSON array.");
-    }
-    command.push(state.uploadedUrl);
-    el.command.value = JSON.stringify(command, null, 2);
-    notify("Uploaded URL inserted into command.", "success");
-  } catch (err) {
-    notify(`Could not insert URL: ${err.message}`, "error");
-  }
+  const existing = el.command.value.trim();
+  el.command.value = existing ? `${existing} ${state.uploadedUrl}` : state.uploadedUrl;
+  notify("Uploaded URL inserted into command.", "success");
 }
 
 async function refreshAll() {
@@ -296,16 +287,12 @@ el.preferredHost.addEventListener("change", () => {
 
 el.submitJobBtn.addEventListener("click", async () => {
   const mode = el.mode.value;
-  let command = ["python", "--version"];
+  let commandText = "python --version";
   if (mode === "quick_run") {
-    try {
-      command = JSON.parse(el.command.value);
-      if (!Array.isArray(command) || !command.length) {
-        throw new Error("Command must be a non-empty JSON array.");
-      }
-    } catch (err) {
-      log(`Invalid command: ${err.message}`);
-      notify(`Invalid command: ${err.message}`, "error");
+    commandText = el.command.value.trim();
+    if (!commandText) {
+      log("Invalid command: command cannot be empty.");
+      notify("Invalid command: command cannot be empty.", "error");
       return;
     }
   }
@@ -314,7 +301,7 @@ el.submitJobBtn.addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify({
         mode,
-        command,
+        command_text: mode === "quick_run" ? commandText : null,
         requires_gpu: el.requiresGpu.checked,
         requested_cpu_cores: Number(el.requestedCpu.value),
         requested_ram_mb: Number(el.requestedRam.value),

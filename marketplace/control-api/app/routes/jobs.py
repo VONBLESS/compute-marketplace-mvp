@@ -14,6 +14,12 @@ router = APIRouter()
 @router.post('', response_model=JobRecord)
 def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email)) -> JobRecord:
     store.cleanup_expired_reservations()
+    command = payload.command or ['python', '--version']
+    if payload.mode == 'quick_run':
+        if payload.command_text is not None and payload.command_text.strip():
+            command = ['cmd', '/c', payload.command_text.strip()]
+        elif payload.command is None:
+            raise HTTPException(status_code=400, detail='Command text is required for quick_run')
 
     if payload.preferred_host_id:
         preferred_host = store.hosts.get(payload.preferred_host_id)
@@ -30,7 +36,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
 
     job = JobRecord(
         owner_email=email,
-        command=payload.command,
+        command=command,
         mode=payload.mode,
         requires_gpu=payload.requires_gpu,
         requested_cpu_cores=payload.requested_cpu_cores,

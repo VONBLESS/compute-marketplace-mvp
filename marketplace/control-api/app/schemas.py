@@ -96,7 +96,8 @@ class HostPublicRecord(BaseModel):
 
 
 class JobCreateRequest(BaseModel):
-    command: list[str] = Field(default_factory=lambda: ['python', '--version'])
+    command: list[str] | None = None
+    command_text: str | None = None
     mode: Literal['quick_run', 'reserve'] = 'quick_run'
     requires_gpu: bool = False
     requested_cpu_cores: int = Field(default=1, ge=1)
