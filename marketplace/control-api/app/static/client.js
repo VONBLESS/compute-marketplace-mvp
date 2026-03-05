@@ -5,6 +5,7 @@ const state = {
   uploadedUrl: "",
   terminalConnected: false,
   terminalBusy: false,
+  terminalQueue: [],
   activeJobId: null,
   activeOutputLength: 0,
 };
@@ -133,7 +134,7 @@ function setAuthState(authenticated) {
 function refreshTerminalButtons() {
   el.connectTerminalBtn.disabled = state.terminalConnected;
   el.disconnectTerminalBtn.disabled = !state.terminalConnected;
-  el.sendCommandBtn.disabled = !state.terminalConnected || state.terminalBusy;
+  el.sendCommandBtn.disabled = !state.terminalConnected;
 }
 
 function renderPreferredHostOptions(hosts) {
@@ -256,6 +257,7 @@ function updateActiveJobOutput(jobs) {
     state.activeJobId = null;
     state.activeOutputLength = 0;
     refreshTerminalButtons();
+    processNextQueuedCommand();
     return;
   }
 
@@ -272,6 +274,7 @@ function updateActiveJobOutput(jobs) {
     state.activeJobId = null;
     state.activeOutputLength = 0;
     refreshTerminalButtons();
+    processNextQueuedCommand();
   }
 }
 
@@ -348,6 +351,7 @@ el.topLogoutBtn.addEventListener("click", async () => {
   state.selectedHostId = "";
   state.terminalConnected = false;
   state.terminalBusy = false;
+  state.terminalQueue = [];
   state.activeJobId = null;
   state.activeOutputLength = 0;
   refreshTerminalButtons();
@@ -369,6 +373,7 @@ el.connectTerminalBtn.addEventListener("click", () => {
 el.disconnectTerminalBtn.addEventListener("click", () => {
   state.terminalConnected = false;
   state.terminalBusy = false;
+  state.terminalQueue = [];
   state.activeJobId = null;
   state.activeOutputLength = 0;
   refreshTerminalButtons();
@@ -376,24 +381,7 @@ el.disconnectTerminalBtn.addEventListener("click", () => {
   notify("Terminal disconnected.", "info");
 });
 
-async function runTerminalCommand() {
-  if (!state.terminalConnected) {
-    notify("Connect terminal first.", "error");
-    return;
-  }
-  if (state.terminalBusy) {
-    notify("Wait for current command to finish.", "info");
-    return;
-  }
-
-  const commandText = el.terminalCommandInput.value.trim();
-  if (!commandText) {
-    notify("Command cannot be empty.", "error");
-    return;
-  }
-
-  appendTerminal(`> ${commandText}`);
-
+async function submitSingleCommand(commandText) {
   try {
     const job = await api("/jobs", {
       method: "POST",
@@ -414,12 +402,47 @@ async function runTerminalCommand() {
     state.activeOutputLength = 0;
     refreshTerminalButtons();
     log(`Terminal command submitted: ${job.id}`);
-    el.terminalCommandInput.value = "";
     await refreshAll();
   } catch (err) {
+    state.terminalBusy = false;
+    refreshTerminalButtons();
     log(`Submit failed: ${err.message}`);
     notify(`Submit failed: ${err.message}`, "error");
+    processNextQueuedCommand();
   }
+}
+
+function processNextQueuedCommand() {
+  if (!state.terminalConnected || state.terminalBusy) {
+    return;
+  }
+  const nextCommand = state.terminalQueue.shift();
+  if (!nextCommand) {
+    return;
+  }
+  appendTerminal(`> ${nextCommand}`);
+  submitSingleCommand(nextCommand);
+}
+
+function runTerminalCommand() {
+  if (!state.terminalConnected) {
+    notify("Connect terminal first.", "error");
+    return;
+  }
+
+  const commands = el.terminalCommandInput.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (!commands.length) {
+    notify("Add at least one command.", "error");
+    return;
+  }
+
+  state.terminalQueue.push(...commands);
+  el.terminalCommandInput.value = "";
+  processNextQueuedCommand();
 }
 
 async function cancelJob(jobId) {
@@ -448,12 +471,6 @@ async function deleteJob(jobId) {
 }
 
 el.sendCommandBtn.addEventListener("click", runTerminalCommand);
-el.terminalCommandInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    runTerminalCommand();
-  }
-});
 
 el.refreshBtn.addEventListener("click", refreshAll);
 el.selectAllJobsBtn.addEventListener("click", async () => {

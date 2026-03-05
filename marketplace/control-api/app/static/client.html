@@ -85,9 +85,10 @@
         <button id="disconnectTerminalBtn" class="btn secondary" type="button" disabled>Disconnect</button>
       </div>
       <label>
-        Command
-        <input id="terminalCommandInput" type="text" placeholder="python --version">
+        Commands (one command per line)
+        <textarea id="terminalCommandInput" class="command-input" rows="8" placeholder="python --version&#10;dir"></textarea>
       </label>
+      <p class="muted">Each new line is treated as a new command. Use Run Command to execute queued lines.</p>
       <div class="row">
         <button id="sendCommandBtn" class="btn" type="button" disabled>Run Command</button>
         <button id="refreshBtn" class="btn ghost">Refresh</button>

@@ -115,6 +115,12 @@ textarea {
   font-family: "IBM Plex Mono", monospace;
 }
 
+.command-input {
+  resize: vertical;
+  max-height: 260px;
+  overflow: auto;
+}
+
 input:focus, select:focus {
   outline: none;
   border-color: var(--accent);
