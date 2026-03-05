@@ -33,6 +33,11 @@ def client_page() -> FileResponse:
     return FileResponse(static_dir / 'client.html')
 
 
+@app.get('/compose', include_in_schema=False)
+def compose_page() -> FileResponse:
+    return FileResponse(static_dir / 'compose.html')
+
+
 @app.get('/host', include_in_schema=False)
 def host_page() -> FileResponse:
     return FileResponse(static_dir / 'host.html')

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cross-Host Compose</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-glow"></div>
+  <main class="layout">
+    <section class="hero card">
+      <p class="eyebrow">Compose Page</p>
+      <h1>Cross-Host CPU+GPU Job</h1>
+      <p class="muted">Runs CPU/RAM workload on one host and GPU workload on another host under one compose job.</p>
+      <div class="row">
+        <a href="/" class="btn ghost">Home</a>
+        <a href="/client" class="btn">Client</a>
+        <a href="/host" class="btn secondary">Host</a>
+        <button id="logoutBtn" class="btn secondary">Logout</button>
+        <span id="statusPill" class="pill">Disconnected</span>
+      </div>
+    </section>
+
+    <section class="card" id="authCard">
+      <h2>Client Auth</h2>
+      <div class="grid two">
+        <label>Email
+          <input id="emailInput" type="email" placeholder="client@example.com">
+        </label>
+        <label>Password
+          <input id="passwordInput" type="password" placeholder="password123">
+        </label>
+      </div>
+      <div class="row">
+        <button id="registerBtn" class="btn">Register Client</button>
+        <button id="loginBtn" class="btn secondary">Login</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Create Compose Job</h2>
+      <label>Command
+        <textarea id="commandInput" class="command-input" rows="6" wrap="off" placeholder="python --version"></textarea>
+      </label>
+      <div class="grid two">
+        <label>CPU Cores (CPU host)
+          <input id="cpuInput" type="number" min="1" value="2">
+        </label>
+        <label>RAM MB (CPU host)
+          <input id="ramInput" type="number" min="128" value="2048">
+        </label>
+      </div>
+      <div class="grid two">
+        <label>Timeout Seconds
+          <input id="timeoutInput" type="number" min="10" max="7200" value="600">
+        </label>
+      </div>
+      <div class="row">
+        <button id="createBtn" class="btn">Create Cross-Host Job</button>
+        <button id="refreshBtn" class="btn ghost">Refresh</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Compose Jobs</h2>
+      <div id="jobsEmpty" class="muted">No compose jobs yet.</div>
+      <div id="jobsList" class="stack jobs-scroll"></div>
+    </section>
+
+    <section class="card">
+      <h2>Live Compose Stream</h2>
+      <div class="row">
+        <button id="clearOutputBtn" class="btn ghost" type="button">Clear Output</button>
+      </div>
+      <pre id="outputLog" class="log"></pre>
+    </section>
+  </main>
+  <script src="/static/compose.js"></script>
+</body>
+</html>
