@@ -14,6 +14,7 @@ router = APIRouter()
 @router.post('', response_model=JobRecord)
 def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email)) -> JobRecord:
     store.cleanup_expired_reservations()
+    state_changed = False
     command = payload.command or ['python', '--version']
     if payload.mode == 'quick_run':
         if payload.command_text is not None and payload.command_text.strip():
@@ -71,6 +72,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
             existing_session['requires_gpu'] = payload.requires_gpu
             target_host_id = session_host_id
             host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
+            state_changed = True
         else:
             candidate_hosts = []
             if target_host_id:
@@ -106,6 +108,7 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
                 'ram_mb': payload.requested_ram_mb,
                 'requires_gpu': payload.requires_gpu,
             }
+            state_changed = True
 
     if target_host_id:
         preferred_host = store.hosts.get(target_host_id)
@@ -162,6 +165,8 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
 
     store.jobs[job.id] = job
     store.queue.append(job.id)
+    if state_changed:
+        store.persist_state()
     return job
 
 
@@ -181,6 +186,7 @@ def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depe
             host.gpu_in_use = False
         host.status = 'busy' if (host.cpu_cores_free < host.cpu_cores or host.ram_mb_free < host.ram_mb or host.gpu_in_use) else 'idle'
     del store.sessions[session_id]
+    store.persist_state()
 
     session_jobs = [
         job for job in store.jobs.values()

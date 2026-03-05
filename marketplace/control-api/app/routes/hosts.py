@@ -30,6 +30,7 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
         existing.vram_mb = payload.vram_mb
         existing.cpu_cores_free = max(0, payload.cpu_cores - used_cpu)
         existing.ram_mb_free = max(0, payload.ram_mb - used_ram)
+        store.persist_state()
         return existing
 
     host = HostRecord(
@@ -43,6 +44,7 @@ def register_host(payload: HostRegisterRequest, email: str = Depends(get_current
         vram_mb=payload.vram_mb,
     )
     store.hosts[host.id] = host
+    store.persist_state()
     return host
 
 
@@ -70,6 +72,7 @@ def heartbeat(payload: HostHeartbeatRequest, host_id: str = Depends(get_host_fro
     if not host.verified:
         host.verified = True
         host.verified_at = datetime.now(timezone.utc)
+    store.persist_state()
     return {'message': 'heartbeat accepted'}
 
 

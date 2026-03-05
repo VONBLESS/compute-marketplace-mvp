@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.core.store import store
 from app.schemas import AuthResponse, LoginRequest, MessageResponse, RegisterRequest
@@ -18,6 +18,7 @@ def register(payload: RegisterRequest, response: Response) -> AuthResponse:
     store.users[payload.email] = {'password': payload.password, 'role': payload.role}
     token = str(uuid4())
     store.tokens[token] = payload.email
+    store.persist_state()
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -36,6 +37,7 @@ def login(payload: LoginRequest, response: Response) -> AuthResponse:
         raise HTTPException(status_code=401, detail='Invalid credentials')
     token = str(uuid4())
     store.tokens[token] = payload.email
+    store.persist_state()
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -48,6 +50,10 @@ def login(payload: LoginRequest, response: Response) -> AuthResponse:
 
 
 @router.post('/logout', response_model=MessageResponse)
-def logout(response: Response) -> MessageResponse:
+def logout(request: Request, response: Response) -> MessageResponse:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token and token in store.tokens:
+        del store.tokens[token]
+        store.persist_state()
     response.delete_cookie(SESSION_COOKIE_NAME)
     return MessageResponse(message='Logged out')
