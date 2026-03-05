@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import subprocess
 import threading
+import shutil
 from collections.abc import Callable
 
 from agent.config import Settings
@@ -59,6 +60,29 @@ def _docker_command(job: dict, settings: Settings, container_name: str) -> list[
 
     docker_cmd.extend([settings.docker_image, 'sh', '-lc', shell_command])
     return docker_cmd
+
+
+def _check_docker_ready() -> str | None:
+    if shutil.which('docker') is None:
+        return 'Docker is not installed or not in PATH. Install Docker Desktop/Engine and restart the host agent.'
+    try:
+        probe = subprocess.run(  # noqa: S603
+            ['docker', 'info'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f'Failed to run docker info: {exc}'
+    if probe.returncode != 0:
+        details = (probe.stdout or '').strip()
+        return (
+            'Docker daemon is not reachable. Start Docker Desktop/Engine first.'
+            + (f' Details: {details}' if details else '')
+        )
+    return None
 
 
 def _run_subprocess(
@@ -118,6 +142,11 @@ def run_job(job: dict, settings: Settings, on_output: Callable[[str], None] | No
     if settings.execution_mode.lower() == 'local':
         command = job.get('command') or ['python', '--version']
         return _run_subprocess(command, timeout_seconds, stream)
+
+    docker_issue = _check_docker_ready()
+    if docker_issue:
+        stream(docker_issue)
+        return 'failed', 1, docker_issue
 
     container_name = f"marketplace-job-{job.get('id', 'unknown')[:12]}"
     command = _docker_command(job, settings, container_name)
