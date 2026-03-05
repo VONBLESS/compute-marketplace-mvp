@@ -3,6 +3,8 @@ const state = {
   selectedHostId: "",
   selectedJobIds: new Set(),
   uploadedUrl: "",
+  retainProgress: false,
+  sessionId: "",
   terminalConnected: false,
   terminalBusy: false,
   terminalQueue: [],
@@ -21,6 +23,8 @@ const el = {
   requestedCpu: document.getElementById("requestedCpuInput"),
   requestedRam: document.getElementById("requestedRamInput"),
   requiresGpu: document.getElementById("requiresGpuInput"),
+  retainProgressInput: document.getElementById("retainProgressInput"),
+  sessionIdOutput: document.getElementById("sessionIdOutput"),
   preferredHost: document.getElementById("preferredHostSelect"),
   uploadFileInput: document.getElementById("uploadFileInput"),
   uploadFileBtn: document.getElementById("uploadFileBtn"),
@@ -28,6 +32,7 @@ const el = {
   insertUrlBtn: document.getElementById("insertUrlBtn"),
   connectTerminalBtn: document.getElementById("connectTerminalBtn"),
   disconnectTerminalBtn: document.getElementById("disconnectTerminalBtn"),
+  stopSessionBtn: document.getElementById("stopSessionBtn"),
   terminalCommandInput: document.getElementById("terminalCommandInput"),
   sendCommandBtn: document.getElementById("sendCommandBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
@@ -135,6 +140,14 @@ function refreshTerminalButtons() {
   el.connectTerminalBtn.disabled = state.terminalConnected;
   el.disconnectTerminalBtn.disabled = !state.terminalConnected;
   el.sendCommandBtn.disabled = !state.terminalConnected;
+  el.stopSessionBtn.disabled = !state.sessionId;
+}
+
+function generateSessionId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `sess-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
 function renderPreferredHostOptions(hosts) {
@@ -231,7 +244,7 @@ function renderJobs(jobs) {
       item.appendChild(topRow);
 
       const details = document.createElement("pre");
-      details.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
+      details.textContent = `id=${job.id}\nmode=${job.mode}\nstatus=${job.status}\nsession_id=${job.session_id || "none"}\nretain_progress=${job.retain_progress}\nsession_action=${job.session_action}\ncommand=${JSON.stringify(job.command)}\nrequested_cpu=${job.requested_cpu_cores}\nrequested_ram_mb=${job.requested_ram_mb}\nrequires_gpu=${job.requires_gpu}\npreferred_host_id=${job.preferred_host_id || "any"}\nassigned_host_id=${job.assigned_host_id || "none"}\nreserve_until=${job.reserve_until || "n/a"}\nupdated_at=${job.updated_at}`;
       item.appendChild(details);
       el.jobsList.appendChild(item);
     });
@@ -352,6 +365,8 @@ el.topLogoutBtn.addEventListener("click", async () => {
   state.terminalConnected = false;
   state.terminalBusy = false;
   state.terminalQueue = [];
+  state.sessionId = "";
+  el.sessionIdOutput.value = "";
   state.activeJobId = null;
   state.activeOutputLength = 0;
   refreshTerminalButtons();
@@ -364,6 +379,15 @@ el.preferredHost.addEventListener("change", () => {
 
 el.connectTerminalBtn.addEventListener("click", () => {
   state.terminalConnected = true;
+  state.retainProgress = !!el.retainProgressInput.checked;
+  if (state.retainProgress && !state.sessionId) {
+    state.sessionId = generateSessionId();
+    el.sessionIdOutput.value = state.sessionId;
+  }
+  if (!state.retainProgress) {
+    state.sessionId = "";
+    el.sessionIdOutput.value = "";
+  }
   refreshTerminalButtons();
   appendTerminal("[terminal connected]");
   notify("Terminal connected.", "success");
@@ -381,6 +405,19 @@ el.disconnectTerminalBtn.addEventListener("click", () => {
   notify("Terminal disconnected.", "info");
 });
 
+el.retainProgressInput.addEventListener("change", () => {
+  state.retainProgress = !!el.retainProgressInput.checked;
+  if (state.retainProgress && !state.sessionId) {
+    state.sessionId = generateSessionId();
+    el.sessionIdOutput.value = state.sessionId;
+  }
+  if (!state.retainProgress && !state.terminalConnected) {
+    state.sessionId = "";
+    el.sessionIdOutput.value = "";
+  }
+  refreshTerminalButtons();
+});
+
 async function submitSingleCommand(commandText) {
   try {
     const job = await api("/jobs", {
@@ -388,6 +425,8 @@ async function submitSingleCommand(commandText) {
       body: JSON.stringify({
         mode: "quick_run",
         command_text: commandText,
+        session_id: state.retainProgress ? state.sessionId : null,
+        retain_progress: state.retainProgress,
         requires_gpu: el.requiresGpu.checked,
         requested_cpu_cores: Number(el.requestedCpu.value),
         requested_ram_mb: Number(el.requestedRam.value),
@@ -439,10 +478,37 @@ function runTerminalCommand() {
     notify("Add at least one command.", "error");
     return;
   }
+  if (state.retainProgress && !state.sessionId) {
+    state.sessionId = generateSessionId();
+    el.sessionIdOutput.value = state.sessionId;
+  }
 
   state.terminalQueue.push(...commands);
   el.terminalCommandInput.value = "";
   processNextQueuedCommand();
+}
+
+async function stopRetainedSession() {
+  if (!state.sessionId) {
+    notify("No retained session is active.", "info");
+    return;
+  }
+  try {
+    await api(`/jobs/sessions/${state.sessionId}/stop`, {
+      method: "POST",
+      body: JSON.stringify({
+        preferred_host_id: state.selectedHostId || null,
+        requires_gpu: el.requiresGpu.checked,
+      }),
+    });
+    appendTerminal(`[session stop requested] ${state.sessionId}`);
+    log(`Session stop requested: ${state.sessionId}`);
+    state.sessionId = "";
+    el.sessionIdOutput.value = "";
+    refreshTerminalButtons();
+  } catch (err) {
+    notify(`Stop session failed: ${err.message}`, "error");
+  }
 }
 
 async function cancelJob(jobId) {
@@ -471,6 +537,7 @@ async function deleteJob(jobId) {
 }
 
 el.sendCommandBtn.addEventListener("click", runTerminalCommand);
+el.stopSessionBtn.addEventListener("click", stopRetainedSession);
 
 el.refreshBtn.addEventListener("click", refreshAll);
 el.selectAllJobsBtn.addEventListener("click", async () => {

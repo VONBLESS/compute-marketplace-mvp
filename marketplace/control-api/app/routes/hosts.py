@@ -90,10 +90,13 @@ def get_assignable_job(host_id: str = Depends(get_host_from_api_key)) -> JobReco
         if job.mode != 'quick_run':
             store.queue.remove(job_id)
             continue
+        if job.assigned_host_id and job.assigned_host_id != host.id:
+            continue
         if job.preferred_host_id and job.preferred_host_id != host.id:
             continue
-        if not store.allocate(host, job):
-            continue
+        if job.session_action != 'stop':
+            if not store.allocate(host, job):
+                continue
         job.status = 'assigned'
         job.assigned_host_id = host.id
         store.touch_job(job)

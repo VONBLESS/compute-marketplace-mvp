@@ -63,6 +63,14 @@
         <input id="requiresGpuInput" type="checkbox">
         Requires GPU
       </label>
+      <label class="checkbox">
+        <input id="retainProgressInput" type="checkbox">
+        Retain Progress (reuse container and workspace)
+      </label>
+      <label>
+        Session ID
+        <input id="sessionIdOutput" type="text" readonly placeholder="Generated when retaining progress">
+      </label>
       <label>
         Preferred Host (optional)
         <select id="preferredHostSelect">
@@ -83,6 +91,7 @@
       <div class="row">
         <button id="connectTerminalBtn" class="btn">Connect Terminal</button>
         <button id="disconnectTerminalBtn" class="btn secondary" type="button" disabled>Disconnect</button>
+        <button id="stopSessionBtn" class="btn ghost" type="button" disabled>Stop Session</button>
       </div>
       <label>
         Commands (one command per line)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import get_current_email, get_host_from_api_key
 from app.core.store import store
-from app.schemas import JobCreateRequest, JobLogChunkRequest, JobRecord, JobResultReport, MessageResponse, utc_now
+from app.schemas import JobCreateRequest, JobLogChunkRequest, JobRecord, JobResultReport, MessageResponse, SessionStopRequest, utc_now
 
 router = APIRouter()
 
@@ -38,6 +38,8 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
         owner_email=email,
         command=command,
         mode=payload.mode,
+        session_id=payload.session_id,
+        retain_progress=payload.retain_progress,
         requires_gpu=payload.requires_gpu,
         requested_cpu_cores=payload.requested_cpu_cores,
         requested_ram_mb=payload.requested_ram_mb,
@@ -77,6 +79,48 @@ def create_job(payload: JobCreateRequest, email: str = Depends(get_current_email
     return job
 
 
+@router.post('/sessions/{session_id}/stop', response_model=MessageResponse)
+def stop_session(session_id: str, payload: SessionStopRequest, email: str = Depends(get_current_email)) -> MessageResponse:
+    store.cleanup_expired_reservations()
+    session_jobs = [
+        job for job in store.jobs.values()
+        if job.owner_email == email and job.session_id == session_id and job.retain_progress
+    ]
+    if not session_jobs:
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    target_host_id = payload.preferred_host_id
+    if not target_host_id:
+        for job in reversed(sorted(session_jobs, key=lambda item: item.updated_at)):
+            if job.assigned_host_id:
+                target_host_id = job.assigned_host_id
+                break
+    if not target_host_id:
+        raise HTTPException(status_code=400, detail='Could not determine target host for session stop')
+
+    host = store.hosts.get(target_host_id)
+    if not host:
+        raise HTTPException(status_code=400, detail='Target host not found')
+
+    stop_job = JobRecord(
+        owner_email=email,
+        command=['echo', 'stopping session'],
+        mode='quick_run',
+        session_id=session_id,
+        retain_progress=True,
+        session_action='stop',
+        requires_gpu=payload.requires_gpu,
+        requested_cpu_cores=1,
+        requested_ram_mb=128,
+        timeout_seconds=120,
+        preferred_host_id=target_host_id,
+    )
+    stop_job.assigned_host_id = target_host_id
+    store.jobs[stop_job.id] = stop_job
+    store.queue.append(stop_job.id)
+    return MessageResponse(message='Session stop requested')
+
+
 @router.get('', response_model=list[JobRecord])
 def list_jobs(email: str = Depends(get_current_email)) -> list[JobRecord]:
     store.cleanup_expired_reservations()
@@ -104,7 +148,7 @@ def cancel_job(job_id: str, email: str = Depends(get_current_email)) -> MessageR
         raise HTTPException(status_code=403, detail='Forbidden')
     if job.status in {'completed', 'failed', 'cancelled', 'expired'}:
         return MessageResponse(message='Job already terminal')
-    if job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+    if job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
         host = store.hosts.get(job.assigned_host_id)
         if host:
             store.release(host, job)
@@ -124,7 +168,7 @@ def delete_job(job_id: str, email: str = Depends(get_current_email)) -> MessageR
     if job.owner_email != email:
         raise HTTPException(status_code=403, detail='Forbidden')
 
-    if job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
+    if job.session_action != 'stop' and job.assigned_host_id and job.status in {'assigned', 'running', 'reserved'}:
         host = store.hosts.get(job.assigned_host_id)
         if host:
             store.release(host, job)
@@ -154,7 +198,8 @@ def report_complete(job_id: str, payload: JobResultReport, host_id: str = Depend
 
     host = store.hosts.get(host_id)
     if host:
-        store.release(host, job)
+        if job.session_action != 'stop':
+            store.release(host, job)
         if host.current_job_id == job.id:
             host.current_job_id = None
 

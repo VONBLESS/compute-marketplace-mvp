@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import re
 import shlex
+import shutil
 import subprocess
 import threading
-import shutil
 from collections.abc import Callable
 
 from agent.config import Settings
+
+SESSION_SPECS: dict[str, dict[str, str | int | bool]] = {}
 
 
 def _stream_reader(pipe, on_output: Callable[[str], None]) -> None:  # noqa: ANN001
@@ -21,45 +24,6 @@ def _to_shell_command(command: list[str]) -> str:
     if len(command) >= 3 and command[0].lower() == 'cmd' and command[1].lower() == '/c':
         return command[2]
     return shlex.join(command)
-
-
-def _docker_command(job: dict, settings: Settings, container_name: str) -> list[str]:
-    command = job.get('command') or ['python', '--version']
-    shell_command = _to_shell_command(command)
-    cpu = max(1, int(job.get('requested_cpu_cores', 1)))
-    ram_mb = max(128, int(job.get('requested_ram_mb', 512)))
-
-    docker_cmd = [
-        'docker',
-        'run',
-        '--rm',
-        '--name',
-        container_name,
-        '--cpus',
-        str(cpu),
-        '--memory',
-        f'{ram_mb}m',
-        '--pids-limit',
-        '256',
-        '--read-only',
-        '--tmpfs',
-        '/tmp:rw,noexec,nosuid,size=256m',
-        '--tmpfs',
-        '/workspace:rw,noexec,nosuid,size=2048m',
-        '--workdir',
-        '/workspace',
-        '--cap-drop',
-        'ALL',
-        '--security-opt',
-        'no-new-privileges',
-        '--user',
-        '65532:65532',
-    ]
-    if job.get('requires_gpu'):
-        docker_cmd.extend(['--gpus', 'all'])
-
-    docker_cmd.extend([settings.docker_image, 'sh', '-lc', shell_command])
-    return docker_cmd
 
 
 def _check_docker_ready() -> str | None:
@@ -134,6 +98,158 @@ def _run_subprocess(
         return 'failed', 1, '\n'.join(output_lines).strip()
 
 
+def _session_slug(session_id: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_.-]', '-', session_id)[:48]
+
+
+def _session_container_name(session_id: str) -> str:
+    return f'marketplace-session-{_session_slug(session_id)}'
+
+
+def _session_volume_name(session_id: str) -> str:
+    return f'marketplace-session-vol-{_session_slug(session_id)}'
+
+
+def _container_running(container_name: str) -> bool:
+    probe = subprocess.run(  # noqa: S603
+        ['docker', 'inspect', '-f', '{{.State.Running}}', container_name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return probe.returncode == 0 and probe.stdout.strip().lower() == 'true'
+
+
+def _remove_container(container_name: str) -> None:
+    subprocess.run(  # noqa: S603
+        ['docker', 'rm', '-f', container_name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def _ensure_session_container(job: dict, settings: Settings) -> tuple[str, str]:
+    session_id = str(job.get('session_id') or '')
+    if not session_id:
+        raise RuntimeError('Missing session_id for retained session job.')
+
+    container_name = _session_container_name(session_id)
+    volume_name = _session_volume_name(session_id)
+    cpu = max(1, int(job.get('requested_cpu_cores', 1)))
+    ram_mb = max(128, int(job.get('requested_ram_mb', 512)))
+    gpu = bool(job.get('requires_gpu'))
+    spec = {'cpu': cpu, 'ram_mb': ram_mb, 'gpu': gpu, 'image': settings.docker_image}
+    previous = SESSION_SPECS.get(session_id)
+
+    running = _container_running(container_name)
+    needs_recreate = (not running) or (previous is not None and previous != spec)
+    if needs_recreate:
+        _remove_container(container_name)
+        create_cmd = [
+            'docker',
+            'run',
+            '-d',
+            '--name',
+            container_name,
+            '--cpus',
+            str(cpu),
+            '--memory',
+            f'{ram_mb}m',
+            '--pids-limit',
+            '512',
+            '--read-only',
+            '--tmpfs',
+            '/tmp:rw,noexec,nosuid,size=256m',
+            '--tmpfs',
+            '/run:rw,noexec,nosuid,size=64m',
+            '--mount',
+            f'type=volume,src={volume_name},dst=/workspace',
+            '--workdir',
+            '/workspace',
+            '--cap-drop',
+            'ALL',
+            '--security-opt',
+            'no-new-privileges',
+            '--user',
+            '65532:65532',
+        ]
+        if gpu:
+            create_cmd.extend(['--gpus', 'all'])
+        create_cmd.extend([settings.docker_image, 'sh', '-lc', 'while true; do sleep 3600; done'])
+        create = subprocess.run(  # noqa: S603
+            create_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if create.returncode != 0:
+            details = (create.stdout or '').strip()
+            raise RuntimeError(f'Failed to create retained session container. {details}')
+        SESSION_SPECS[session_id] = spec
+
+    return session_id, container_name
+
+
+def _run_ephemeral_docker(job: dict, settings: Settings, stream: Callable[[str], None]) -> tuple[str, int, str]:
+    command = job.get('command') or ['python', '--version']
+    shell_command = _to_shell_command(command)
+    cpu = max(1, int(job.get('requested_cpu_cores', 1)))
+    ram_mb = max(128, int(job.get('requested_ram_mb', 512)))
+    container_name = f"marketplace-job-{str(job.get('id', 'unknown'))[:12]}"
+    docker_cmd = [
+        'docker',
+        'run',
+        '--rm',
+        '--name',
+        container_name,
+        '--cpus',
+        str(cpu),
+        '--memory',
+        f'{ram_mb}m',
+        '--pids-limit',
+        '256',
+        '--read-only',
+        '--tmpfs',
+        '/tmp:rw,noexec,nosuid,size=256m',
+        '--tmpfs',
+        '/workspace:rw,noexec,nosuid,size=2048m',
+        '--workdir',
+        '/workspace',
+        '--cap-drop',
+        'ALL',
+        '--security-opt',
+        'no-new-privileges',
+        '--user',
+        '65532:65532',
+    ]
+    if job.get('requires_gpu'):
+        docker_cmd.extend(['--gpus', 'all'])
+    docker_cmd.extend([settings.docker_image, 'sh', '-lc', shell_command])
+
+    def _cleanup_container() -> None:
+        _remove_container(container_name)
+
+    return _run_subprocess(docker_cmd, int(job.get('timeout_seconds', 120)), stream, cleanup=_cleanup_container)
+
+
+def _run_retained_session(job: dict, settings: Settings, stream: Callable[[str], None]) -> tuple[str, int, str]:
+    session_id, container_name = _ensure_session_container(job, settings)
+    if job.get('session_action') == 'stop':
+        _remove_container(container_name)
+        SESSION_SPECS.pop(session_id, None)
+        message = f'Retained session {session_id} stopped.'
+        stream(message)
+        return 'completed', 0, message
+
+    command = job.get('command') or ['python', '--version']
+    shell_command = _to_shell_command(command)
+    exec_cmd = ['docker', 'exec', container_name, 'sh', '-lc', shell_command]
+    return _run_subprocess(exec_cmd, int(job.get('timeout_seconds', 120)), stream)
+
+
 def run_job(job: dict, settings: Settings, on_output: Callable[[str], None] | None = None) -> tuple[str, int, str]:
     """Run a job with optional real-time output callback."""
     stream = on_output or (lambda _: None)
@@ -148,15 +264,12 @@ def run_job(job: dict, settings: Settings, on_output: Callable[[str], None] | No
         stream(docker_issue)
         return 'failed', 1, docker_issue
 
-    container_name = f"marketplace-job-{job.get('id', 'unknown')[:12]}"
-    command = _docker_command(job, settings, container_name)
+    if job.get('retain_progress') and job.get('session_id'):
+        try:
+            return _run_retained_session(job, settings, stream)
+        except Exception as exc:  # noqa: BLE001
+            message = f'Session runner error: {exc}'
+            stream(message)
+            return 'failed', 1, message
 
-    def _cleanup_container() -> None:
-        subprocess.run(  # noqa: S603
-            ['docker', 'rm', '-f', container_name],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-
-    return _run_subprocess(command, timeout_seconds, stream, cleanup=_cleanup_container)
+    return _run_ephemeral_docker(job, settings, stream)

@@ -99,6 +99,8 @@ class JobCreateRequest(BaseModel):
     command: list[str] | None = None
     command_text: str | None = None
     mode: Literal['quick_run', 'reserve'] = 'quick_run'
+    session_id: str | None = None
+    retain_progress: bool = False
     requires_gpu: bool = False
     requested_cpu_cores: int = Field(default=1, ge=1)
     requested_ram_mb: int = Field(default=512, ge=128)
@@ -112,6 +114,9 @@ class JobRecord(BaseModel):
     owner_email: str
     command: list[str]
     mode: Literal['quick_run', 'reserve'] = 'quick_run'
+    session_id: str | None = None
+    retain_progress: bool = False
+    session_action: Literal['none', 'stop'] = 'none'
     requires_gpu: bool
     requested_cpu_cores: int
     requested_ram_mb: int
@@ -139,6 +144,11 @@ class JobLogChunkRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class SessionStopRequest(BaseModel):
+    preferred_host_id: str | None = None
+    requires_gpu: bool = False
 
 
 class FileUploadResponse(BaseModel):
