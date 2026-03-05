@@ -1,10 +1,10 @@
-# Compute Marketplace MVP Skeleton
+# Compute Marketplace MVP
 
-This scaffold gives you:
+This MVP gives you:
 - `control-api`: FastAPI control plane with auth/hosts/jobs endpoints
 - `host-agent`: Windows Python service loop skeleton (heartbeat + poll + run)
 - `infra`: docker-compose for API, Postgres, Redis
-- `worker-images/python-batch`: placeholder container worker image
+- `worker-images/python-batch`: placeholder worker image
 
 ## Structure
 
@@ -47,6 +47,19 @@ This scaffold gives you:
    - `POST /jobs` with bearer token and payload like:
      `{ "command": ["python", "--version"], "requested_cpu_cores": 2, "requested_ram_mb": 2048, "requires_gpu": false, "timeout_seconds": 120 }`
 
+## Deployment (EC2)
+
+1. Clone:
+   - `git clone https://github.com/VONBLESS/compute-marketplace-mvp.git`
+2. Start stack:
+   - `cd compute-marketplace-mvp/marketplace/infra`
+   - `docker-compose up -d --build`
+3. Verify:
+   - `curl http://localhost:8000/health`
+4. Open:
+   - `http://<EC2_PUBLIC_IP>:8000/client`
+   - `http://<EC2_PUBLIC_IP>:8000/host`
+
 ## Notes
 
 - Current store is in-memory only; restart clears data.
@@ -54,4 +67,4 @@ This scaffold gives you:
 - Host capacity is now tracked as free/total CPU and RAM for per-job slicing.
 - Only verified hosts (agent heartbeat received) are exposed to clients for sharing.
 - You can tune host parallelism with `MAX_PARALLEL_JOBS` for `host-agent`.
-- Next step is replacing `agent/runner.py` with Docker-isolated execution and adding PostgreSQL persistence.
+- Next step is stronger job isolation and persistent runtime state.
