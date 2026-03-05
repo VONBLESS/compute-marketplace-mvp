@@ -1,0 +1,264 @@
+:root {
+  --bg: #f4efe6;
+  --paper: #fff9ef;
+  --ink: #1f1b18;
+  --muted: #675f56;
+  --line: #d9cfbf;
+  --accent: #006d77;
+  --accent-2: #db3a34;
+  --ok: #2a9d8f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 10% 10%, #ffd6a5 0%, transparent 40%),
+              radial-gradient(circle at 90% 20%, #bde0fe 0%, transparent 35%),
+              linear-gradient(180deg, #f6f1e7 0%, #ece4d8 100%);
+}
+
+.page-glow {
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -12deg,
+    transparent,
+    transparent 12px,
+    rgba(255, 255, 255, 0.2) 12px,
+    rgba(255, 255, 255, 0.2) 13px
+  );
+  pointer-events: none;
+}
+
+.layout {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 14px 48px;
+  display: grid;
+  gap: 14px;
+}
+
+.card {
+  background: var(--paper);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 6px 6px 0 rgba(31, 27, 24, 0.12);
+  animation: rise 250ms ease-out both;
+}
+
+.hero h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.6rem, 2.2vw, 2.3rem);
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid.two {
+  grid-template-columns: 1fr;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.95rem;
+}
+
+input, select {
+  width: 100%;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fffcf5;
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox input {
+  width: auto;
+}
+
+.btn {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-family: "Space Grotesk", sans-serif;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+  text-decoration: none;
+}
+
+.btn.secondary {
+  background: var(--accent-2);
+}
+
+.btn.ghost {
+  background: #f5efe2;
+  color: var(--ink);
+  border: 2px solid var(--line);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+.pill {
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: #fff;
+  padding: 5px 10px;
+  font-size: 0.86rem;
+}
+
+.pill.connected {
+  border-color: #7dcfb6;
+  color: #146b56;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffef8;
+  padding: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.item.selectable {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.item.selectable.selected {
+  border: 2px solid var(--accent);
+  box-shadow: inset 0 0 0 1px #7dcfb6;
+  background: #f1fffb;
+}
+
+.log {
+  margin: 0;
+  min-height: 140px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #171613;
+  color: #f6f2e8;
+  padding: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.notifications {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  gap: 8px;
+  z-index: 9999;
+  width: min(380px, calc(100vw - 24px));
+}
+
+.toast {
+  border-radius: 10px;
+  border: 2px solid var(--line);
+  background: #fff;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  animation: rise 180ms ease-out both;
+}
+
+.toast.success {
+  border-color: #6ec9af;
+  background: #e9fff8;
+  color: #0f6b54;
+}
+
+.toast.error {
+  border-color: #ff9d92;
+  background: #fff1ef;
+  color: #9a1912;
+}
+
+.toast.info {
+  border-color: #a7bbd6;
+  background: #f3f8ff;
+  color: #1f446d;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 820px) {
+  .grid.two {
+    grid-template-columns: 1fr 1fr;
+  }
+}

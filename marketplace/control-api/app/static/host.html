@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Host Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-glow"></div>
+  <main class="layout">
+    <section class="hero card">
+      <p class="eyebrow">Host Page</p>
+      <h1>Publish Your Compute</h1>
+      <p class="muted">Auto-detect local CPU/RAM/GPU, then register this machine as a host.</p>
+      <div class="row">
+        <a href="/" class="btn ghost">Home</a>
+        <a href="/client" class="btn secondary">Go To Client Page</a>
+        <span id="statusPill" class="pill">Disconnected</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Host Auth</h2>
+      <div class="grid two">
+        <label>
+          Email
+          <input id="emailInput" type="email" placeholder="host@example.com">
+        </label>
+        <label>
+          Password
+          <input id="passwordInput" type="password" placeholder="password123">
+        </label>
+      </div>
+      <div class="row">
+        <button id="registerBtn" class="btn">Register Host User</button>
+        <button id="loginBtn" class="btn secondary">Login</button>
+        <button id="logoutBtn" class="btn secondary">Logout</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Host Hardware</h2>
+      <div class="row">
+        <button id="detectBtn" class="btn">Auto Detect Hardware</button>
+      </div>
+      <div class="grid two">
+        <label>
+          Host Name
+          <input id="hostNameInput" type="text">
+        </label>
+        <label>
+          CPU Cores
+          <input id="cpuInput" type="number" min="1">
+        </label>
+      </div>
+      <div class="grid two">
+        <label>
+          RAM MB
+          <input id="ramInput" type="number" min="512">
+        </label>
+        <label>
+          GPU Name
+          <input id="gpuInput" type="text" placeholder="Auto-detected if available">
+        </label>
+      </div>
+      <label>
+        VRAM MB (optional)
+        <input id="vramInput" type="number" min="0" placeholder="Leave blank if unknown">
+      </label>
+      <div class="row">
+        <button id="registerHostBtn" class="btn">Register This Host</button>
+        <button id="refreshBtn" class="btn ghost">Refresh</button>
+      </div>
+      <label>
+        Host API Key (for agent env var)
+        <input id="hostApiKeyInput" type="text" readonly>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Your Published Hosts</h2>
+      <div id="hostsEmpty" class="muted">No hosts published yet.</div>
+      <div id="hostsList" class="stack"></div>
+    </section>
+
+    <section class="card">
+      <h2>Activity</h2>
+      <pre id="logOutput" class="log"></pre>
+    </section>
+  </main>
+  <script src="/static/host.js"></script>
+</body>
+</html>
