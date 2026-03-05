@@ -18,8 +18,55 @@ def _touch_compose(compose: ComposeJobRecord) -> None:
     compose.updated_at = datetime.now(timezone.utc)
 
 
-def _select_host_pair(requested_cpu_cores: int, requested_ram_mb: int) -> tuple[str, str]:
+def _select_host_pair(
+    requested_cpu_cores: int,
+    requested_ram_mb: int,
+    cpu_host_id: str | None = None,
+    gpu_host_id: str | None = None,
+) -> tuple[str, str]:
     verified_hosts = [host for host in store.hosts.values() if host.verified]
+    host_by_id = {host.id: host for host in verified_hosts}
+
+    if cpu_host_id and gpu_host_id:
+        if cpu_host_id == gpu_host_id:
+            raise HTTPException(status_code=400, detail='CPU host and GPU host must be different')
+        cpu_host = host_by_id.get(cpu_host_id)
+        gpu_host = host_by_id.get(gpu_host_id)
+        if not cpu_host:
+            raise HTTPException(status_code=404, detail='Selected CPU host is unavailable or not verified')
+        if not gpu_host:
+            raise HTTPException(status_code=404, detail='Selected GPU host is unavailable or not verified')
+        if cpu_host.cpu_cores_free < requested_cpu_cores or cpu_host.ram_mb_free < requested_ram_mb:
+            raise HTTPException(status_code=409, detail='Selected CPU host does not have enough free CPU/RAM')
+        if not gpu_host.gpu_name or gpu_host.gpu_in_use:
+            raise HTTPException(status_code=409, detail='Selected GPU host does not have a free GPU')
+        return cpu_host.id, gpu_host.id
+
+    if cpu_host_id:
+        cpu_host = host_by_id.get(cpu_host_id)
+        if not cpu_host:
+            raise HTTPException(status_code=404, detail='Selected CPU host is unavailable or not verified')
+        if cpu_host.cpu_cores_free < requested_cpu_cores or cpu_host.ram_mb_free < requested_ram_mb:
+            raise HTTPException(status_code=409, detail='Selected CPU host does not have enough free CPU/RAM')
+        gpu_candidates = [host for host in verified_hosts if host.gpu_name and not host.gpu_in_use and host.id != cpu_host.id]
+        if not gpu_candidates:
+            raise HTTPException(status_code=409, detail='No compatible GPU host is available')
+        return cpu_host.id, gpu_candidates[0].id
+
+    if gpu_host_id:
+        gpu_host = host_by_id.get(gpu_host_id)
+        if not gpu_host:
+            raise HTTPException(status_code=404, detail='Selected GPU host is unavailable or not verified')
+        if not gpu_host.gpu_name or gpu_host.gpu_in_use:
+            raise HTTPException(status_code=409, detail='Selected GPU host does not have a free GPU')
+        cpu_candidates = [
+            host for host in verified_hosts
+            if host.cpu_cores_free >= requested_cpu_cores and host.ram_mb_free >= requested_ram_mb and host.id != gpu_host.id
+        ]
+        if not cpu_candidates:
+            raise HTTPException(status_code=409, detail='No compatible CPU host is available')
+        return cpu_candidates[0].id, gpu_host.id
+
     cpu_candidates = [
         host for host in verified_hosts
         if host.cpu_cores_free >= requested_cpu_cores and host.ram_mb_free >= requested_ram_mb
@@ -86,7 +133,12 @@ def create_compose_job(payload: ComposeJobCreateRequest, email: str = Depends(ge
     if not payload.gpu_required:
         raise HTTPException(status_code=400, detail='cross_host_compose requires gpu_required=true')
 
-    cpu_host_id, gpu_host_id = _select_host_pair(payload.requested_cpu_cores, payload.requested_ram_mb)
+    cpu_host_id, gpu_host_id = _select_host_pair(
+        payload.requested_cpu_cores,
+        payload.requested_ram_mb,
+        payload.cpu_host_id,
+        payload.gpu_host_id,
+    )
     command = ['cmd', '/c', payload.command_text.strip()]
 
     cpu_job = JobRecord(

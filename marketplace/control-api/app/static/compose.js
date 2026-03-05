@@ -14,6 +14,8 @@ const el = {
   cpuInput: document.getElementById("cpuInput"),
   ramInput: document.getElementById("ramInput"),
   timeoutInput: document.getElementById("timeoutInput"),
+  cpuHostSelect: document.getElementById("cpuHostSelect"),
+  gpuHostSelect: document.getElementById("gpuHostSelect"),
   createBtn: document.getElementById("createBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   jobsList: document.getElementById("jobsList"),
@@ -21,6 +23,37 @@ const el = {
   outputLog: document.getElementById("outputLog"),
   clearOutputBtn: document.getElementById("clearOutputBtn"),
 };
+
+function hostLabel(host) {
+  const gpu = host.gpu_name ? `GPU ${host.gpu_name}` : "No GPU";
+  return `${host.host_name} (${host.id.slice(0, 8)}) | CPU ${host.cpu_cores_free}/${host.cpu_cores} | RAM ${host.ram_mb_free}/${host.ram_mb} MB | ${gpu}`;
+}
+
+function populateHostSelects(hosts) {
+  const cpuValue = el.cpuHostSelect.value || "";
+  const gpuValue = el.gpuHostSelect.value || "";
+  el.cpuHostSelect.innerHTML = '<option value="">Auto</option>';
+  el.gpuHostSelect.innerHTML = '<option value="">Auto</option>';
+
+  const cpuHosts = hosts.filter((host) => host.verified);
+  const gpuHosts = hosts.filter((host) => host.verified && host.gpu_name);
+
+  cpuHosts.forEach((host) => {
+    const opt = document.createElement("option");
+    opt.value = host.id;
+    opt.textContent = hostLabel(host);
+    el.cpuHostSelect.appendChild(opt);
+  });
+  gpuHosts.forEach((host) => {
+    const opt = document.createElement("option");
+    opt.value = host.id;
+    opt.textContent = hostLabel(host);
+    el.gpuHostSelect.appendChild(opt);
+  });
+
+  el.cpuHostSelect.value = [...el.cpuHostSelect.options].some((o) => o.value === cpuValue) ? cpuValue : "";
+  el.gpuHostSelect.value = [...el.gpuHostSelect.options].some((o) => o.value === gpuValue) ? gpuValue : "";
+}
 
 function setConnected(flag, text = "") {
   el.statusPill.textContent = text || (flag ? "Connected" : "Disconnected");
@@ -60,6 +93,13 @@ async function refresh() {
   } catch {
     setConnected(false, "API Offline");
     return;
+  }
+
+  try {
+    const hosts = await api("/hosts/available");
+    populateHostSelects(hosts);
+  } catch (err) {
+    appendOutput(`Hosts refresh error: ${err.message}`);
   }
 
   try {
@@ -172,6 +212,8 @@ el.createBtn.addEventListener("click", async () => {
         requested_ram_mb: Number(el.ramInput.value),
         timeout_seconds: Number(el.timeoutInput.value),
         gpu_required: true,
+        cpu_host_id: el.cpuHostSelect.value || null,
+        gpu_host_id: el.gpuHostSelect.value || null,
       }),
     });
     appendOutput(`Compose job created: ${result.compose_job.id}`);

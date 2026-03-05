@@ -1,57 +1,49 @@
-# Compute Marketplace MVP Skeleton
+# Compute Marketplace Cross-Host Variant
 
-This scaffold gives you:
-- `control-api`: FastAPI control plane with auth/hosts/jobs endpoints
-- `host-agent`: Windows Python service loop skeleton (heartbeat + poll + run)
+This variant extends the MVP with cross-host compose scheduling:
+
+- CPU/RAM workload can run on one verified host
+- GPU workload can run on another verified host
+- Both child jobs are tracked under one compose parent job
+
+## What is in this variant
+
+- `control-api`: FastAPI control plane with auth, hosts, jobs, compose jobs, files
+- `host-agent`: Windows host agent + setup EXE flow
 - `infra`: docker-compose for API, Postgres, Redis
-- `worker-images/python-batch`: placeholder container worker image
+- `worker-images/python-batch`: placeholder worker image
 
-## Structure
+## Key Endpoints
 
-- `control-api/app/main.py`: API entrypoint
-- `control-api/app/routes/*.py`: endpoint groups
-- `control-api/app/core/store.py`: in-memory state for MVP skeleton
-- `host-agent/agent/service.py`: main agent loop
-- `infra/docker-compose.yml`: local infra and API startup
+- `POST /compose-jobs`
+- `GET /compose-jobs`
+- `GET /compose-jobs/{compose_id}`
+- `GET /compose-jobs/{compose_id}/status`
+- `GET /compose-jobs/{compose_id}/stream`
+- `POST /compose-jobs/{compose_id}/cancel`
 
 ## Quick Start
 
-1. Start infra and API:
+1. Start stack:
    - `cd marketplace/infra`
-   - `docker compose up`
-   - Open `http://localhost:8000`, then choose:
-     - `http://localhost:8000/client` for client job submission + capacity view
-     - `http://localhost:8000/host` for host registration with auto-detected hardware
+   - `docker compose up -d --build`
 
-2. Create a user token (example):
-   - `POST /auth/register` with `{ "email": "host1@example.com", "password": "password123", "role": "host" }`
-   - In the web UI at `http://localhost:8000`, register/login creates a browser session cookie automatically (no manual token copy needed).
+2. Open UI:
+   - `http://localhost:8000/client`
+   - `http://localhost:8000/host`
 
-3. Register a host:
-   - `POST /hosts/register` with bearer token
-   - Save returned `api_key`
+3. Register host(s):
+   - host page register/login
+   - publish host
+   - install/start host agent
+   - wait for heartbeat verification
 
-4. Start host agent (Windows PowerShell):
-   - Download installer from `http://localhost:8000/downloads/marketplace-host-agent-setup.exe`
-   - On host page, register host and copy `API Base URL` + `Host API Key`
-   - Open setup `.exe`, paste values, click `Save + Verify + Start`
-   - Host becomes shareable only after first heartbeat verification
+4. Run jobs:
+   - client page for normal terminal jobs
+   - client split mode for CPU+RAM host + GPU host selection
 
-5. Build setup `.exe` on Windows (for distribution):
-   - `cd marketplace/host-agent`
-   - `powershell -ExecutionPolicy Bypass -File .\build-setup-exe.ps1`
-   - Output: `dist/marketplace-host-agent-setup.exe`
+## Current limits
 
-6. Submit a job as a client:
-   - Register/login client user
-   - `POST /jobs` with bearer token and payload like:
-     `{ "command": ["python", "--version"], "requested_cpu_cores": 2, "requested_ram_mb": 2048, "requires_gpu": false, "timeout_seconds": 120 }`
-
-## Notes
-
-- Current store is in-memory only; restart clears data.
-- Runner currently executes host commands directly as a placeholder.
-- Host capacity is now tracked as free/total CPU and RAM for per-job slicing.
-- Only verified hosts (agent heartbeat received) are exposed to clients for sharing.
-- You can tune host parallelism with `MAX_PARALLEL_JOBS` for `host-agent`.
-- Next step is replacing `agent/runner.py` with Docker-isolated execution and adding PostgreSQL persistence.
+- Store is still in-memory for runtime scheduling state.
+- Compose execution is coordinated by parent/child jobs, not deep distributed model offload.
+- True cross-host tensor/layer offload in one inference pass is not implemented.

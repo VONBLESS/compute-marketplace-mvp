@@ -58,6 +58,18 @@
         <label>Timeout Seconds
           <input id="timeoutInput" type="number" min="10" max="7200" value="600">
         </label>
+        <label>CPU/RAM Host
+          <select id="cpuHostSelect">
+            <option value="">Auto</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid two">
+        <label>GPU Host
+          <select id="gpuHostSelect">
+            <option value="">Auto</option>
+          </select>
+        </label>
       </div>
       <div class="row">
         <button id="createBtn" class="btn">Create Cross-Host Job</button>

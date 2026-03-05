@@ -168,6 +168,8 @@ class ComposeJobCreateRequest(BaseModel):
     requested_ram_mb: int = Field(default=512, ge=128)
     timeout_seconds: int = Field(default=600, ge=10, le=7200)
     gpu_required: bool = True
+    cpu_host_id: str | None = None
+    gpu_host_id: str | None = None
 
 
 class ComposeJobRecord(BaseModel):

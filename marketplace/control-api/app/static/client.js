@@ -10,6 +10,8 @@ const state = {
   terminalQueue: [],
   activeJobId: null,
   activeOutputLength: 0,
+  activeComposeId: null,
+  activeComposeOutputLength: 0,
 };
 
 const el = {
@@ -23,6 +25,9 @@ const el = {
   requestedCpu: document.getElementById("requestedCpuInput"),
   requestedRam: document.getElementById("requestedRamInput"),
   requiresGpu: document.getElementById("requiresGpuInput"),
+  crossHostCompose: document.getElementById("crossHostComposeInput"),
+  cpuComposeHost: document.getElementById("cpuComposeHostSelect"),
+  gpuComposeHost: document.getElementById("gpuComposeHostSelect"),
   retainProgressInput: document.getElementById("retainProgressInput"),
   sessionIdOutput: document.getElementById("sessionIdOutput"),
   preferredHost: document.getElementById("preferredHostSelect"),
@@ -185,6 +190,45 @@ function renderPreferredHostOptions(hosts) {
   }
 }
 
+function composeHostLabel(host) {
+  return `${host.host_name} (${host.cpu_cores_free}/${host.cpu_cores}C, ${host.ram_mb_free}/${host.ram_mb}MB${host.gpu_name ? ", GPU" : ""})`;
+}
+
+function renderComposeHostOptions(hosts) {
+  const cpuValue = el.cpuComposeHost.value || "";
+  const gpuValue = el.gpuComposeHost.value || "";
+
+  el.cpuComposeHost.innerHTML = "";
+  el.gpuComposeHost.innerHTML = "";
+
+  const autoCpu = document.createElement("option");
+  autoCpu.value = "";
+  autoCpu.textContent = "Auto";
+  el.cpuComposeHost.appendChild(autoCpu);
+
+  const autoGpu = document.createElement("option");
+  autoGpu.value = "";
+  autoGpu.textContent = "Auto";
+  el.gpuComposeHost.appendChild(autoGpu);
+
+  hosts.filter((host) => host.verified).forEach((host) => {
+    const option = document.createElement("option");
+    option.value = host.id;
+    option.textContent = composeHostLabel(host);
+    el.cpuComposeHost.appendChild(option);
+  });
+
+  hosts.filter((host) => host.verified && host.gpu_name).forEach((host) => {
+    const option = document.createElement("option");
+    option.value = host.id;
+    option.textContent = composeHostLabel(host);
+    el.gpuComposeHost.appendChild(option);
+  });
+
+  el.cpuComposeHost.value = [...el.cpuComposeHost.options].some((o) => o.value === cpuValue) ? cpuValue : "";
+  el.gpuComposeHost.value = [...el.gpuComposeHost.options].some((o) => o.value === gpuValue) ? gpuValue : "";
+}
+
 function renderResources(hosts) {
   el.resourcesList.innerHTML = "";
   el.resourcesEmpty.style.display = hosts.length ? "none" : "block";
@@ -303,6 +347,9 @@ function insertUploadedUrlIntoCommand() {
 }
 
 function updateActiveJobOutput(jobs) {
+  if (state.activeComposeId) {
+    return;
+  }
   if (!state.activeJobId) {
     return;
   }
@@ -333,6 +380,41 @@ function updateActiveJobOutput(jobs) {
   }
 }
 
+async function updateActiveComposeOutput() {
+  if (!state.activeComposeId) {
+    return;
+  }
+  let detail;
+  try {
+    detail = await api(`/compose-jobs/${state.activeComposeId}/status`);
+  } catch (err) {
+    state.terminalBusy = false;
+    state.activeComposeId = null;
+    state.activeComposeOutputLength = 0;
+    refreshTerminalButtons();
+    log(`Compose refresh failed: ${err.message}`);
+    processNextQueuedCommand();
+    return;
+  }
+
+  const merged = detail.merged_output || "";
+  if (merged.length > state.activeComposeOutputLength) {
+    const delta = merged.slice(state.activeComposeOutputLength);
+    appendTerminal(delta);
+    state.activeComposeOutputLength = merged.length;
+  }
+
+  const composeStatus = detail.compose_job?.status || "failed";
+  if (["completed", "failed", "cancelled"].includes(composeStatus)) {
+    appendTerminal(`[compose status=${composeStatus}]`);
+    state.terminalBusy = false;
+    state.activeComposeId = null;
+    state.activeComposeOutputLength = 0;
+    refreshTerminalButtons();
+    processNextQueuedCommand();
+  }
+}
+
 async function refreshAll() {
   try {
     await api("/health");
@@ -345,10 +427,12 @@ async function refreshAll() {
     const [hosts, sessions, jobs] = await Promise.all([api("/hosts/available"), api("/jobs/sessions"), api("/jobs")]);
     setAuthState(true);
     renderPreferredHostOptions(hosts);
+    renderComposeHostOptions(hosts);
     renderResources(hosts);
     renderSessions(sessions);
     renderJobs(jobs);
     updateActiveJobOutput(jobs);
+    await updateActiveComposeOutput();
   } catch (err) {
     el.resourcesList.innerHTML = "";
     el.sessionsList.innerHTML = "";
@@ -412,6 +496,8 @@ el.topLogoutBtn.addEventListener("click", async () => {
   state.terminalQueue = [];
   state.activeJobId = null;
   state.activeOutputLength = 0;
+  state.activeComposeId = null;
+  state.activeComposeOutputLength = 0;
   refreshTerminalButtons();
   await refreshAll();
 });
@@ -444,6 +530,8 @@ el.disconnectTerminalBtn.addEventListener("click", () => {
   state.terminalQueue = [];
   state.activeJobId = null;
   state.activeOutputLength = 0;
+  state.activeComposeId = null;
+  state.activeComposeOutputLength = 0;
   refreshTerminalButtons();
   appendTerminal("[terminal disconnected]");
   notify("Terminal disconnected.", "info");
@@ -465,6 +553,34 @@ el.retainProgressInput.addEventListener("change", () => {
 
 async function submitSingleCommand(commandText) {
   try {
+    if (el.crossHostCompose.checked) {
+      if (!el.requiresGpu.checked) {
+        throw new Error("Split mode requires 'Requires GPU' to be enabled.");
+      }
+      const compose = await api("/compose-jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          command_text: commandText,
+          requested_cpu_cores: Number(el.requestedCpu.value),
+          requested_ram_mb: Number(el.requestedRam.value),
+          timeout_seconds: Number(el.timeout.value),
+          gpu_required: true,
+          cpu_host_id: el.cpuComposeHost.value || null,
+          gpu_host_id: el.gpuComposeHost.value || null,
+        }),
+      });
+
+      state.terminalBusy = true;
+      state.activeJobId = null;
+      state.activeOutputLength = 0;
+      state.activeComposeId = compose.compose_job.id;
+      state.activeComposeOutputLength = 0;
+      refreshTerminalButtons();
+      log(`Split compose command submitted: ${compose.compose_job.id}`);
+      await refreshAll();
+      return;
+    }
+
     const job = await api("/jobs", {
       method: "POST",
       body: JSON.stringify({
@@ -484,6 +600,8 @@ async function submitSingleCommand(commandText) {
     state.terminalBusy = true;
     state.activeJobId = job.id;
     state.activeOutputLength = 0;
+    state.activeComposeId = null;
+    state.activeComposeOutputLength = 0;
     refreshTerminalButtons();
     log(`Terminal command submitted: ${job.id}`);
     await refreshAll();

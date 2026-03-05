@@ -17,7 +17,6 @@
       <h1>Submit Jobs and Track Capacity</h1>
       <div class="row">
         <a href="/" class="btn ghost">Home</a>
-        <a href="/compose" class="btn">Cross-Host Compose</a>
         <a href="/host" class="btn secondary">Go To Host Page</a>
         <button id="topLogoutBtn" class="btn secondary hidden">Logout</button>
         <span id="statusPill" class="pill">Disconnected</span>
@@ -64,6 +63,24 @@
         <input id="requiresGpuInput" type="checkbox">
         Requires GPU
       </label>
+      <label class="checkbox">
+        <input id="crossHostComposeInput" type="checkbox">
+        Split Mode: CPU+RAM from one host and GPU from another host
+      </label>
+      <div class="grid two">
+        <label>
+          CPU/RAM Host (split mode)
+          <select id="cpuComposeHostSelect">
+            <option value="">Auto</option>
+          </select>
+        </label>
+        <label>
+          GPU Host (split mode)
+          <select id="gpuComposeHostSelect">
+            <option value="">Auto</option>
+          </select>
+        </label>
+      </div>
       <label class="checkbox">
         <input id="retainProgressInput" type="checkbox">
         Retain Progress (reuse container and workspace)
